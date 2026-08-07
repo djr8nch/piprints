@@ -25,7 +25,7 @@
 
 ---
 
-## ✨ Overview
+## Overview
 
 **PiPrints** is an open-source photo booth platform built for Raspberry Pi. The goal is to provide a polished, modular, and customizable experience that anyone can build using affordable hardware.
 
@@ -33,16 +33,16 @@ Whether you're building a booth for a wedding, birthday, graduation, makerspace,
 
 The project emphasizes:
 
-- 🧩 Modular software architecture
-- 📖 Comprehensive documentation
-- 🔌 Hardware flexibility
-- 🎨 Customizable themes
-- 🖨️ Multiple printer backends
-- ❤️ Open-source collaboration
+- Modular software architecture
+- Comprehensive documentation
+- Hardware flexibility
+- Customizable themes
+- Multiple printer backends
+- Open-source collaboration
 
 ---
 
-# 🚧 Project Status
+# Project Status
 
 > **Early Development**
 
@@ -61,30 +61,30 @@ Future versions will introduce additional printer support, themes, plugins, QR c
 
 ---
 
-# 🌟 Features
+# Features
 
 ### Current
 
-- 🚧 Raspberry Pi Camera integration
-- 🚧 Thermal printer support
-- 🚧 Session management
-- 🚧 Modular project architecture
+- Raspberry Pi Camera integration
+- Thermal printer support
+- Session management
+- Modular project architecture
 
 ### Planned
 
-- 📸 Photo strip generation
-- 🎨 Theme engine
-- 📱 QR code downloads
-- 🎥 GIF mode
-- 🖥️ Touchscreen interface
-- 🔌 Plugin system
-- 📷 DSLR support
-- ☁️ Cloud backups
-- 📊 Analytics dashboard
+- Photo strip generation
+- Theme engine
+- QR code downloads
+- GIF mode
+- Touchscreen interface
+- Plugin system
+- DSLR support
+- Cloud backups
+- Analytics dashboard
 
 ---
 
-# 🛣️ Roadmap
+# Roadmap
 
 ## Version 0.1 — MVP
 
@@ -112,7 +112,7 @@ Future versions will introduce additional printer support, themes, plugins, QR c
 
 ---
 
-# 🏗️ Planned Architecture
+# Planned Architecture
 
 ```text
                  PiPrints
@@ -132,7 +132,7 @@ The architecture is intentionally modular so that cameras, printers, layouts, th
 
 ---
 
-# 📂 Repository Structure
+# Repository Structure
 
 ```text
 PiPrints/
@@ -154,7 +154,7 @@ PiPrints/
 
 ---
 
-# 🔧 Planned Hardware
+# Planned Hardware
 
 ### Primary Development Platform
 
@@ -173,7 +173,7 @@ PiPrints/
 
 ---
 
-# 📖 Documentation
+# Documentation
 
 Documentation is located inside the `docs/` directory.
 
@@ -189,7 +189,7 @@ Planned documentation includes:
 
 ---
 
-# 🤝 Contributing
+# Contributing
 
 Contributions are welcome!
 
@@ -199,7 +199,7 @@ Contribution guidelines will be available in **CONTRIBUTING.md**.
 
 ---
 
-# 💡 Project Vision
+# Project Vision
 
 PiPrints aims to become the easiest and most flexible open-source Raspberry Pi photo booth platform.
 
@@ -215,7 +215,7 @@ The project prioritizes:
 
 ---
 
-# 🗺️ Development Status
+# Development Status
 
 | Component | Status |
 |-----------|--------|
@@ -237,7 +237,7 @@ Legend:
 
 ---
 
-# 📜 License
+# License
 
 This project is licensed under the MIT License.
 
