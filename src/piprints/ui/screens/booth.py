@@ -1,0 +1,182 @@
+"""Minimal PySide6 presentation for the basic booth capture workflow."""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QPixmap, QResizeEvent
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+from piprints.booth import BoothCaptureError, BoothController
+from piprints.camera import Camera
+from piprints.ui.widgets.camera_preview import CameraPreviewWidget
+
+logger = logging.getLogger(__name__)
+
+_COUNTDOWN_SECONDS = 3
+
+
+class _CaptureWorker(QThread):
+    """Run the blocking booth capture operation away from the UI thread."""
+
+    capture_succeeded = Signal(object)
+    capture_failed = Signal(str)
+
+    def __init__(self, controller: BoothController) -> None:
+        super().__init__()
+        self._controller = controller
+
+    def run(self) -> None:
+        """Capture the photo and notify the UI with a simple result."""
+        try:
+            self.capture_succeeded.emit(self._controller.capture())
+        except BoothCaptureError as error:
+            logger.exception("Booth capture worker failed")
+            self.capture_failed.emit(str(error))
+
+
+class BoothScreen(QWidget):
+    """Render the basic capture workflow and forward intent to the controller."""
+
+    def __init__(self, camera: Camera, controller: BoothController) -> None:
+        super().__init__()
+        self._controller = controller
+        self._capture_worker: _CaptureWorker | None = None
+        self._review_pixmap: QPixmap | None = None
+
+        self._preview = CameraPreviewWidget(camera)
+        self._countdown_label = QLabel()
+        self._countdown_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._countdown_label.setStyleSheet("font-size: 48px; font-weight: bold;")
+        self._take_photo_button = QPushButton("Take Photo")
+        self._take_photo_button.clicked.connect(self._start_countdown)
+
+        preview_page = QWidget()
+        preview_layout = QVBoxLayout(preview_page)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.addWidget(self._preview, stretch=1)
+        preview_layout.addWidget(self._countdown_label)
+        preview_layout.addWidget(self._take_photo_button)
+
+        self._review_label = QLabel()
+        self._review_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._review_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
+        )
+        self._review_label.setStyleSheet("background-color: black;")
+        self._retake_button = QPushButton("Retake")
+        self._retake_button.clicked.connect(self._retake)
+
+        review_page = QWidget()
+        review_layout = QVBoxLayout(review_page)
+        review_layout.setContentsMargins(0, 0, 0, 0)
+        review_layout.addWidget(self._review_label, stretch=1)
+        review_layout.addWidget(self._retake_button)
+
+        self._pages = QStackedWidget()
+        self._pages.addWidget(preview_page)
+        self._pages.addWidget(review_page)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._pages)
+
+        self._countdown_timer = QTimer(self)
+        self._countdown_timer.setInterval(1000)
+        self._countdown_timer.timeout.connect(self._advance_countdown)
+
+    def start(self) -> None:
+        """Start live preview when the window becomes visible."""
+        self._preview.start()
+
+    def stop(self) -> None:
+        """Stop timers and workers before the application releases the camera."""
+        self._countdown_timer.stop()
+        self._preview.stop()
+        if self._capture_worker is not None and self._capture_worker.isRunning():
+            if not self._capture_worker.wait(5000):
+                logger.warning("Booth capture worker did not stop within five seconds")
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Scale the reviewed photo as the window size changes."""
+        self._update_review_pixmap()
+        super().resizeEvent(event)
+
+    def _start_countdown(self) -> None:
+        """Begin a non-blocking three-second countdown."""
+        self._controller.start_countdown()
+        self._take_photo_button.setEnabled(False)
+        self._seconds_remaining = _COUNTDOWN_SECONDS
+        self._countdown_label.setText(str(self._seconds_remaining))
+        self._countdown_timer.start()
+
+    def _advance_countdown(self) -> None:
+        """Update the UI countdown or begin the capture operation."""
+        self._seconds_remaining -= 1
+        if self._seconds_remaining > 0:
+            self._countdown_label.setText(str(self._seconds_remaining))
+            return
+
+        self._countdown_timer.stop()
+        self._countdown_label.setText("Capturing…")
+        self._preview.stop()
+        self._capture_worker = _CaptureWorker(self._controller)
+        self._capture_worker.capture_succeeded.connect(self._show_review)
+        self._capture_worker.capture_failed.connect(self._recover_from_capture_failure)
+        self._capture_worker.finished.connect(self._capture_worker_finished)
+        self._capture_worker.start()
+
+    def _show_review(self, image_path: Path) -> None:
+        """Load the captured image and transition the UI to review."""
+        self._review_pixmap = QPixmap(str(image_path))
+        if self._review_pixmap.isNull():
+            self._review_label.setText("Photo captured, but it could not be displayed.")
+        else:
+            self._review_label.setText("")
+        self._pages.setCurrentIndex(1)
+        self._update_review_pixmap()
+
+    def _recover_from_capture_failure(self, message: str) -> None:
+        """Return to idle preview after a failed camera capture."""
+        self._countdown_label.setText(f"Capture failed\n{message}")
+        self._take_photo_button.setEnabled(True)
+        self._preview.start()
+
+    def _capture_worker_finished(self) -> None:
+        """Release the completed worker reference before another capture."""
+        if self._capture_worker is not None:
+            self._capture_worker.deleteLater()
+            self._capture_worker = None
+
+    def _retake(self) -> None:
+        """Return from review to idle preview for another capture."""
+        self._controller.retake()
+        self._review_pixmap = None
+        self._review_label.clear()
+        self._countdown_label.clear()
+        self._take_photo_button.setEnabled(True)
+        self._pages.setCurrentIndex(0)
+        self._preview.start()
+
+    def _update_review_pixmap(self) -> None:
+        """Fit the current reviewed image within its display area."""
+        if self._review_pixmap is None or self._review_pixmap.isNull():
+            return
+
+        self._review_label.setPixmap(
+            self._review_pixmap.scaled(
+                self._review_label.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )

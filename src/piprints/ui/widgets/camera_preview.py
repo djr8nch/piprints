@@ -7,7 +7,7 @@ from queue import Empty, Full, Queue
 
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QImage, QPixmap, QResizeEvent
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from piprints.camera import Camera, CameraPreviewError, PreviewFrame
 
@@ -75,6 +75,9 @@ class CameraPreviewWidget(QWidget):
 
         self._image_label = QLabel("Starting camera preview…")
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._image_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
+        )
         self._image_label.setStyleSheet("background-color: black; color: white;")
 
         layout = QVBoxLayout(self)

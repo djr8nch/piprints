@@ -29,6 +29,13 @@ class FakePicamera2:
     def capture_file(self, name: str) -> None:
         self.capture_paths.append(name)
 
+    def create_still_configuration(self, *, main: dict[str, object]) -> object:
+        return main
+
+    def switch_mode_and_capture_file(self, configuration: object, file: str) -> None:
+        self.configuration = configuration
+        self.capture_paths.append(file)
+
     def set_controls(self, controls: dict[str, object]) -> None:
         self.controls.append(controls)
 
@@ -101,6 +108,7 @@ def test_capture_creates_parent_directories_and_returns_destination(
     assert destination.parent.is_dir()
     assert result == destination
     assert fake_camera.capture_paths == [str(destination)]
+    assert fake_camera.configuration == {"format": "BGR888"}
 
 
 def test_capture_preview_frame_returns_a_piprints_owned_rgb_frame(

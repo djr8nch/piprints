@@ -8,7 +8,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from piprints import __version__
-from piprints.bootstrap import create_application, create_main_window
+from piprints.bootstrap import create_application, create_booth, create_main_window
 from piprints.camera import Camera, PreviewFrame
 
 
@@ -35,12 +35,14 @@ def test_package_exposes_a_version() -> None:
     assert __version__ == "0.1.0"
 
 
-def test_application_shell_can_be_created() -> None:
+def test_application_shell_can_be_created(tmp_path: Path) -> None:
     """Create the shell without requiring a display or Raspberry Pi hardware."""
     application = create_application(["piprints"])
-    window = create_main_window(FakeCamera())
+    camera = FakeCamera()
+    booth = create_booth(camera, tmp_path / "captures")
+    window = create_main_window(camera, booth)
 
     assert application is not None
-    assert window.windowTitle() == "PiPrints Camera Preview"
+    assert window.windowTitle() == "PiPrints"
 
     window.close()

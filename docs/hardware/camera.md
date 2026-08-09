@@ -44,7 +44,7 @@ Provide another location with `--output` when needed:
 The destination's parent directories are created automatically. This is a
 manual hardware validation step and is intentionally excluded from pytest.
 
-## Validate the live preview
+## Validate the booth capture workflow
 
 Launch PiPrints from the repository root:
 
@@ -56,9 +56,13 @@ Verify all of the following manually on the Raspberry Pi:
 
 1. The PiPrints window displays a smooth live camera image.
 2. Moving the subject changes focus automatically on Camera Module 3.
-3. Resizing the window preserves the image aspect ratio and does not crash.
-4. Closing PiPrints releases the camera without errors.
-5. Running `./scripts/run.sh` again opens the camera successfully.
+3. Select **Take Photo** and verify a visible 3, 2, 1 countdown.
+4. Verify the captured image appears in review after the countdown.
+5. Select **Retake** and verify that live preview resumes.
+6. Repeat the capture and retake flow multiple times.
+7. Resize the window during preview and review without a crash.
+8. Close PiPrints, then run `./scripts/run.sh` again to confirm the camera was
+   released.
 
 This validation requires physical hardware and a display, so it must not be
 added to the standard pytest suite.

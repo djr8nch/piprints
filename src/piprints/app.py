@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import logging
 
-from piprints.bootstrap import create_application, create_camera, create_main_window
+from piprints.bootstrap import (
+    create_application,
+    create_booth,
+    create_camera,
+    create_main_window,
+)
 
 
 def configure_logging() -> None:
@@ -21,6 +26,7 @@ def main() -> int:
 
     application = create_application()
     camera = create_camera()
+    booth = create_booth(camera)
     try:
         camera.start()
     except Exception:
@@ -28,7 +34,7 @@ def main() -> int:
         camera.stop()
         return 1
 
-    window = create_main_window(camera)
+    window = create_main_window(camera, booth)
     window.show()
 
     logging.getLogger(__name__).info("PiPrints camera preview started")

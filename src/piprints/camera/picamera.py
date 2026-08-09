@@ -8,6 +8,7 @@ from typing import Protocol
 
 from piprints.camera.base import Camera, PreviewFrame
 from piprints.camera.exceptions import (
+    CameraCaptureError,
     CameraNotStartedError,
     CameraPreviewError,
     CameraStartupError,
@@ -29,6 +30,14 @@ class _Picamera2(Protocol):
 
     def capture_file(self, name: str) -> None:
         """Capture an image to a file."""
+
+    def create_still_configuration(self, *, main: dict[str, object]) -> object:
+        """Create a full-resolution still-image configuration."""
+
+    def switch_mode_and_capture_file(
+        self, configuration: object, file: str
+    ) -> None:
+        """Capture a file in another mode, then restore the current mode."""
 
     def set_controls(self, controls: dict[str, object]) -> None:
         """Set libcamera controls."""
@@ -121,7 +130,18 @@ class PiCamera(Camera):
             raise CameraNotStartedError("Camera must be started before capture.")
 
         destination.parent.mkdir(parents=True, exist_ok=True)
-        self._get_camera().capture_file(str(destination))
+        try:
+            camera = self._get_camera()
+            configuration = camera.create_still_configuration(
+                main={"format": "BGR888"}
+            )
+            camera.switch_mode_and_capture_file(configuration, str(destination))
+        except Exception as error:
+            logger.exception("Unable to capture a Raspberry Pi camera still image")
+            raise CameraCaptureError(
+                "Unable to capture a camera still image."
+            ) from error
+
         logger.info("Captured image to %s", destination)
         return destination
 
