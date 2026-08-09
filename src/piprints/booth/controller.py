@@ -8,6 +8,8 @@ from pathlib import Path
 
 from piprints.booth.state import BoothState
 from piprints.camera import Camera
+from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
+from piprints.imaging.layouts import Layout
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +25,21 @@ class BoothStateError(RuntimeError):
 class BoothController:
     """Coordinate camera captures and state for the initial booth workflow."""
 
-    def __init__(self, camera: Camera, capture_directory: Path) -> None:
+    def __init__(
+        self,
+        camera: Camera,
+        capture_directory: Path,
+        photo_loader: PhotoLoader,
+        photo_pipeline: PhotoPipeline,
+        layout: Layout,
+    ) -> None:
         self._camera = camera
         self._capture_directory = capture_directory
+        self._photo_loader = photo_loader
+        self._photo_pipeline = photo_pipeline
+        self._layout = layout
         self._state = BoothState.IDLE
-        self._last_capture: Path | None = None
+        self._last_capture: Photo | None = None
 
     @property
     def state(self) -> BoothState:
@@ -35,7 +47,7 @@ class BoothController:
         return self._state
 
     @property
-    def last_capture(self) -> Path | None:
+    def last_capture(self) -> Photo | None:
         """Return the most recently captured image, if one is under review."""
         return self._last_capture
 
@@ -45,7 +57,7 @@ class BoothController:
         self._state = BoothState.COUNTDOWN
         logger.info("Booth countdown started")
 
-    def capture(self) -> Path:
+    def capture(self) -> Photo:
         """Capture a still image and transition to review.
 
         Call this from a worker thread because the underlying camera operation
@@ -57,15 +69,18 @@ class BoothController:
 
         try:
             captured_image = self._camera.capture(destination)
+            captured_photo = self._photo_loader.load(captured_image)
+            processed_photo = self._photo_pipeline.process(captured_photo)
+            final_photo = self._layout.compose((processed_photo,))
         except Exception as error:
             self._state = BoothState.IDLE
             logger.exception("Booth capture failed")
             raise BoothCaptureError("Unable to capture a photo.") from error
 
-        self._last_capture = captured_image
+        self._last_capture = final_photo
         self._state = BoothState.REVIEW
         logger.info("Booth capture complete: %s", captured_image)
-        return captured_image
+        return final_photo
 
     def retake(self) -> None:
         """Discard the review selection and return to idle preview."""

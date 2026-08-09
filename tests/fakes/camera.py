@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PIL import Image
+
 from piprints.camera import Camera, PreviewFrame
 
 
@@ -30,6 +32,8 @@ class FakeCamera(Camera):
         """Record a still capture or raise the configured failure."""
         if self.capture_error is not None:
             raise self.capture_error
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (2, 3), "black").save(destination)
         self.capture_paths.append(destination)
         return destination
 

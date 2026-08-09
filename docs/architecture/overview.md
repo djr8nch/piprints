@@ -11,13 +11,14 @@ turning the application into a hardware-specific UI.
 ## Current implementation
 
 The alpha implements application startup, a basic booth workflow, Raspberry Pi
-camera control, and a PySide6 interface. `app.py` starts the application and
-owns process-level camera cleanup. `bootstrap.py` is the composition root: it
-creates `PiCamera`, `BoothController`, and `MainWindow`, then injects the
-dependencies they need.
+camera control, composable imaging, and a PySide6 interface. `app.py` starts
+the application and owns process-level camera cleanup. `bootstrap.py` is the
+composition root: it creates `PiCamera`, `PhotoPipeline`, `SinglePhotoLayout`,
+`BoothController`, and `MainWindow`, then injects the dependencies they need.
 
 `BoothController` owns the workflow state (`IDLE`, `COUNTDOWN`, `CAPTURING`,
-and `REVIEW`) and requests still captures through the `Camera` contract.
+and `REVIEW`) and requests still captures through the `Camera` contract. It
+coordinates imaging collaborators without decoding or transforming pixels.
 `PiCamera` adapts Picamera2 and libcamera behind that contract. It configures
 continuous autofocus for Camera Module 3, supplies standard `PreviewFrame`
 values for live preview, and switches to a still configuration for capture.
@@ -33,11 +34,18 @@ flowchart TD
     Bootstrap["bootstrap.py<br/>composition root"]
     App["app.py"] --> Bootstrap
     Bootstrap --> CameraImpl["PiCamera"]
+    Bootstrap --> Pipeline["PhotoPipeline"]
+    Bootstrap --> Layout["SinglePhotoLayout"]
     Bootstrap --> Booth["BoothController"]
     Bootstrap --> Window["MainWindow / BoothScreen"]
 
     Window -->|user intent| Booth
     Booth -->|still capture| CameraContract["Camera contract"]
+    Booth -->|capture path| Loader["PhotoLoader"]
+    Loader --> Photo["Photo"]
+    Booth -->|one photo| Pipeline
+    Pipeline -->|processed photo| Layout
+    Layout -->|final photo| Window
     Window -->|preview frames| CameraContract
     CameraImpl --> CameraContract
     CameraImpl --> Driver["Picamera2 / libcamera"]
@@ -45,7 +53,33 @@ flowchart TD
 
 The UI depends directly on the PiPrints-owned camera contract only for preview
 frames. Workflow commands travel through `BoothController`; neither path gives
-the UI a Picamera2 or libcamera object.
+the UI a Picamera2 or libcamera object. A focused UI presentation adapter turns
+the final imaging `Photo` into a Qt pixmap; it does not perform image
+processing.
+
+## Imaging pipeline and layouts
+
+The imaging subsystem separates two distinct operations:
+
+- `PhotoPipeline` applies an ordered sequence of `PhotoOperation` objects to
+  exactly one in-memory `Photo`. The current `ResizeOperation` uses Pillow's
+  high-quality Lanczos resampling. Pillow is a maintained dependency with
+  Raspberry Pi ARM64-compatible Linux packages and provides the small,
+  well-supported image API needed for this milestone.
+- A `Layout` is a Strategy that receives processed photos and returns one final
+  `Photo`. `SinglePhotoLayout` is the current concrete strategy and returns
+  its one input unchanged.
+
+`PhotoLoader`, also owned by `imaging`, is the narrow boundary between the
+current path-based camera contract and the in-memory `Photo` model. It decodes
+and copies captures to RGB before processing. `Photo` itself only wraps the
+in-memory Pillow image; it has no capture-path or persistence responsibility.
+
+Every layout declares `required_photos`. The current single-photo layout
+declares `1`; a future `FourPhotoLayout` can declare `4`, letting the booth
+workflow determine capture count from the selected strategy instead of adding
+layout-specific branching. The current workflow intentionally remains a
+single-capture flow.
 
 ## Current capture workflow
 
@@ -70,7 +104,7 @@ runtime `captures/` directory; this is not a storage or session subsystem.
 | `booth` | Implemented: basic capture state and camera coordination. |
 | `camera` | Implemented: `Camera` contract, `PreviewFrame`, domain errors, and Picamera2 adapter. |
 | `config` | Placeholder for future runtime configuration. |
-| `imaging` | Placeholder for future image operations and layouts. |
+| `imaging` | Implemented: in-memory `Photo`, path loader, per-photo pipeline and resize operation, layout contracts, and `SinglePhotoLayout`. It is independent of UI, camera hardware, storage, and printing. |
 | `input` | Placeholder for future user and hardware input integration. |
 | `printing` | Placeholder for future printer abstractions and implementations. |
 | `session` | Placeholder for future session lifecycle behavior. |
@@ -93,6 +127,7 @@ Allowed:
 
 ```text
 BoothController → Camera
+BoothController → PhotoLoader + PhotoPipeline + Layout
 CameraPreviewWidget → Camera / PreviewFrame
 bootstrap.py → PiCamera + BoothController + MainWindow
 ```
@@ -103,6 +138,7 @@ Discouraged:
 BoothScreen → Picamera2
 BoothController → QWidget
 Camera adapter → BoothScreen
+PhotoPipeline → Layout
 ```
 
 ## Test boundaries
@@ -114,10 +150,10 @@ are excluded from standard CI.
 
 ## Future evolution
 
-Printing, persistent storage, sessions, imaging layouts, themes, input
-hardware, sharing, and video are not implemented. When those milestones begin,
-they should be added at the package boundaries above rather than folded into
-the current booth or UI classes.
+Printing, persistent storage, multi-photo layouts, themes, input hardware,
+sharing, and video are not implemented. When those milestones begin, they
+should be added at the package boundaries above rather than folded into the
+current booth or UI classes.
 
 ## Design decisions
 

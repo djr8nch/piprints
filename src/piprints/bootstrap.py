@@ -10,6 +10,8 @@ from PySide6.QtWidgets import QApplication
 
 from piprints.booth import BoothController
 from piprints.camera import Camera, PiCamera
+from piprints.imaging import PhotoLoader, PhotoPipeline
+from piprints.imaging.layouts import SinglePhotoLayout
 from piprints.ui.screens.main_window import MainWindow
 
 
@@ -33,7 +35,13 @@ def create_booth(
 ) -> BoothController:
     """Create the booth workflow with its runtime capture location."""
     directory = capture_directory or Path.cwd() / "captures"
-    return BoothController(camera, directory)
+    return BoothController(
+        camera=camera,
+        capture_directory=directory,
+        photo_loader=PhotoLoader(),
+        photo_pipeline=PhotoPipeline(),
+        layout=SinglePhotoLayout(),
+    )
 
 
 def create_main_window(camera: Camera, booth: BoothController) -> MainWindow:

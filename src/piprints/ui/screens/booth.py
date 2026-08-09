@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QPixmap, QResizeEvent
@@ -19,6 +18,8 @@ from PySide6.QtWidgets import (
 
 from piprints.booth import BoothCaptureError, BoothController
 from piprints.camera import Camera
+from piprints.imaging import Photo
+from piprints.ui.photo_presentation import photo_to_pixmap
 from piprints.ui.widgets.camera_preview import CameraPreviewWidget
 
 logger = logging.getLogger(__name__)
@@ -136,9 +137,9 @@ class BoothScreen(QWidget):
         self._capture_worker.finished.connect(self._capture_worker_finished)
         self._capture_worker.start()
 
-    def _show_review(self, image_path: Path) -> None:
-        """Load the captured image and transition the UI to review."""
-        self._review_pixmap = QPixmap(str(image_path))
+    def _show_review(self, photo: Photo) -> None:
+        """Present the final photo and transition the UI to review."""
+        self._review_pixmap = photo_to_pixmap(photo)
         if self._review_pixmap.isNull():
             self._review_label.setText("Photo captured, but it could not be displayed.")
         else:

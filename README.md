@@ -33,8 +33,8 @@ Live preview → 3-second countdown → still capture → review → retake
 ```
 
 Captured runtime images are written to the ignored `captures/` directory. This
-alpha does not yet implement printing, sessions, persistent storage, layouts,
-themes, sharing, GPIO input, or video recording.
+alpha does not yet implement printing, sessions, persistent storage,
+multi-photo layouts, themes, sharing, GPIO input, or video recording.
 
 ## Quick start
 
