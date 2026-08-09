@@ -6,33 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from piprints.booth import BoothCaptureError, BoothController, BoothState
-from piprints.camera import Camera, PreviewFrame
-
-
-class FakeCamera(Camera):
-    """Camera fake that records still-capture requests without hardware."""
-
-    def __init__(self, *, capture_error: Exception | None = None) -> None:
-        self.capture_error = capture_error
-        self.capture_paths: list[Path] = []
-
-    def start(self) -> None:
-        """Start the fake camera."""
-
-    def capture(self, destination: Path) -> Path:
-        """Record a still capture or raise the configured failure."""
-        if self.capture_error is not None:
-            raise self.capture_error
-        self.capture_paths.append(destination)
-        return destination
-
-    def capture_preview_frame(self) -> PreviewFrame:
-        """Return a minimal frame; preview is outside these controller tests."""
-        return PreviewFrame(b"\x00\x00\x00", 1, 1, 3)
-
-    def stop(self) -> None:
-        """Stop the fake camera."""
+from piprints.booth import (
+    BoothCaptureError,
+    BoothController,
+    BoothState,
+    BoothStateError,
+)
+from tests.fakes import FakeCamera
 
 
 def test_controller_starts_idle(tmp_path: Path) -> None:
@@ -60,10 +40,26 @@ def test_successful_capture_transitions_to_review(tmp_path: Path) -> None:
     assert camera.capture_paths == [captured_image]
 
 
+def test_capture_before_countdown_raises_state_error(tmp_path: Path) -> None:
+    """A still capture is not valid while the booth is displaying preview."""
+    controller = BoothController(FakeCamera(), tmp_path / "captures")
+
+    with pytest.raises(BoothStateError):
+        controller.capture()
+
+
+def test_countdown_cannot_start_twice(tmp_path: Path) -> None:
+    """The controller rejects a second countdown while one is already active."""
+    controller = BoothController(FakeCamera(), tmp_path / "captures")
+    controller.start_countdown()
+
+    with pytest.raises(BoothStateError):
+        controller.start_countdown()
+
+
 def test_retake_returns_to_idle_preview(tmp_path: Path) -> None:
     """Retake clears the reviewed image and makes another capture possible."""
-    camera = FakeCamera()
-    controller = BoothController(camera, tmp_path / "captures")
+    controller = BoothController(FakeCamera(), tmp_path / "captures")
     controller.start_countdown()
     controller.capture()
 
@@ -73,15 +69,26 @@ def test_retake_returns_to_idle_preview(tmp_path: Path) -> None:
     assert controller.last_capture is None
 
 
-def test_capture_failure_returns_to_idle(tmp_path: Path) -> None:
-    """A camera failure is translated and does not leave the booth stuck."""
-    camera = FakeCamera(capture_error=RuntimeError("camera disconnected"))
-    controller = BoothController(camera, tmp_path / "captures")
+def test_retake_outside_review_raises_state_error(tmp_path: Path) -> None:
+    """Retake is only valid when a captured image is under review."""
+    controller = BoothController(FakeCamera(), tmp_path / "captures")
+
+    with pytest.raises(BoothStateError):
+        controller.retake()
+
+
+def test_capture_failure_returns_to_idle_and_preserves_cause(tmp_path: Path) -> None:
+    """A camera failure is translated without leaving the booth stuck."""
+    camera_error = RuntimeError("camera disconnected")
+    controller = BoothController(
+        FakeCamera(capture_error=camera_error), tmp_path / "captures"
+    )
     controller.start_countdown()
 
-    with pytest.raises(BoothCaptureError):
+    with pytest.raises(BoothCaptureError) as error_info:
         controller.capture()
 
+    assert error_info.value.__cause__ is camera_error
     assert controller.state is BoothState.IDLE
     assert controller.last_capture is None
 
