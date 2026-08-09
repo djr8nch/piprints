@@ -18,6 +18,9 @@ dependencies = [
     "PySide6>=6.7",
 ]
 
+[project.scripts]
+piprints = "piprints.app:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
