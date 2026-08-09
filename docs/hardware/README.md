@@ -1,3 +1,3 @@
 # Hardware documentation
 
-- [Raspberry Pi Camera](camera.md)
+- [Raspberry Pi Camera Module 3](camera.md)
