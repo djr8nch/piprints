@@ -5,15 +5,15 @@
 </p>
 
 <p align="center">
+  <img src="docs/assets/preview.gif" alt="PiPrints preview" width="900">
+</p>
+
+<p align="center">
   <strong>Raspberry Pi-first photo booth platform.</strong>
 </p>
 
 <p align="center">
   <img src="docs/assets/logo.png" alt="PiPrints Logo" width="180">
-</p>
-
-<p align="center">
-  <img src="docs/assets/preview.gif" alt="PiPrints preview" width="900">
 </p>
 
 <p align="center">
