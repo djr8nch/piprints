@@ -1,0 +1,12 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run PiPrints",
+            "type": "python",
+            "request": "launch",
+            "module": "piprints.app",
+            "justMyCode": true
+        }
+    ]
+}
