@@ -13,7 +13,9 @@ class FakePicamera2:
     """In-memory Picamera2 substitute for deterministic unit tests."""
 
     def __init__(self) -> None:
+        self.configuration: object | None = None
         self.capture_paths: list[str] = []
+        self.preview_images: list[FakePreviewArray] = []
         self.controls: list[dict[str, object]] = []
         self.start_calls = 0
         self.stop_calls = 0
@@ -29,6 +31,27 @@ class FakePicamera2:
 
     def set_controls(self, controls: dict[str, object]) -> None:
         self.controls.append(controls)
+
+    def create_preview_configuration(self, *, main: dict[str, object]) -> object:
+        return main
+
+    def configure(self, configuration: object) -> None:
+        self.configuration = configuration
+
+    def capture_array(self, name: str) -> FakePreviewArray:
+        assert name == "main"
+        return self.preview_images.pop(0)
+
+
+class FakePreviewArray:
+    """In-memory RGB image substitute for Picamera2 preview output."""
+
+    def __init__(self, shape: tuple[int, int, int], data: bytes) -> None:
+        self.shape = shape
+        self._data = data
+
+    def tobytes(self) -> bytes:
+        return self._data
 
 
 def test_capture_before_start_raises_domain_error(tmp_path: Path) -> None:
@@ -55,6 +78,10 @@ def test_start_is_idempotent_and_enables_continuous_autofocus(
 
     assert fake_camera.start_calls == 1
     assert fake_camera.controls == [{"AfMode": autofocus_mode}]
+    assert fake_camera.configuration == {
+        "size": (1280, 720),
+        "format": "BGR888",
+    }
 
 
 def test_capture_creates_parent_directories_and_returns_destination(
@@ -74,6 +101,24 @@ def test_capture_creates_parent_directories_and_returns_destination(
     assert destination.parent.is_dir()
     assert result == destination
     assert fake_camera.capture_paths == [str(destination)]
+
+
+def test_capture_preview_frame_returns_a_piprints_owned_rgb_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preview output contains packed RGB data rather than a hardware frame."""
+    fake_camera = FakePicamera2()
+    fake_camera.preview_images.append(FakePreviewArray((2, 3, 3), b"a" * 18))
+    camera = PiCamera(fake_camera)
+    monkeypatch.setattr(
+        "piprints.camera.picamera._continuous_autofocus_mode", lambda: object()
+    )
+
+    camera.start()
+    frame = camera.capture_preview_frame()
+
+    assert frame.data == b"a" * 18
+    assert (frame.width, frame.height, frame.bytes_per_line) == (3, 2, 9)
 
 
 def test_stop_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,8 +1,8 @@
 # Raspberry Pi Camera
 
-PiPrints Camera Milestone 1 supports Raspberry Pi Camera Modules through
-Picamera2. Camera Module 3 is the primary target and is configured for
-continuous autofocus when started.
+PiPrints supports Raspberry Pi Camera Modules through Picamera2. Camera Module
+3 is the primary target and is configured for continuous autofocus when
+started. Camera Milestone 2 displays a live preview in the PiPrints window.
 
 ## Prerequisites
 
@@ -43,3 +43,22 @@ Provide another location with `--output` when needed:
 
 The destination's parent directories are created automatically. This is a
 manual hardware validation step and is intentionally excluded from pytest.
+
+## Validate the live preview
+
+Launch PiPrints from the repository root:
+
+```bash
+./scripts/run.sh
+```
+
+Verify all of the following manually on the Raspberry Pi:
+
+1. The PiPrints window displays a smooth live camera image.
+2. Moving the subject changes focus automatically on Camera Module 3.
+3. Resizing the window preserves the image aspect ratio and does not crash.
+4. Closing PiPrints releases the camera without errors.
+5. Running `./scripts/run.sh` again opens the camera successfully.
+
+This validation requires physical hardware and a display, so it must not be
+added to the standard pytest suite.

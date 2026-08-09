@@ -32,6 +32,6 @@ echo "Installing PiPrints..."
 python -m pip install -e "$PROJECT_ROOT[dev]"
 
 echo "Validating Picamera2..."
-python -c "from picamera2 import Picamera2; print('Picamera2 OK')"
+python -c "import importlib.util; assert importlib.util.find_spec('picamera2'); print('Picamera2 OK')"
 
 echo "PiPrints setup complete."

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from piprints.bootstrap import create_application, create_main_window
+from piprints.bootstrap import create_application, create_camera, create_main_window
 
 
 def configure_logging() -> None:
@@ -16,12 +16,23 @@ def configure_logging() -> None:
 
 
 def main() -> int:
-    """Start the PiPrints application shell."""
+    """Start the PiPrints live camera preview application."""
     configure_logging()
 
     application = create_application()
-    window = create_main_window()
+    camera = create_camera()
+    try:
+        camera.start()
+    except Exception:
+        logging.getLogger(__name__).exception("PiPrints could not start the camera")
+        camera.stop()
+        return 1
+
+    window = create_main_window(camera)
     window.show()
 
-    logging.getLogger(__name__).info("PiPrints application shell started")
-    return application.exec()
+    logging.getLogger(__name__).info("PiPrints camera preview started")
+    try:
+        return application.exec()
+    finally:
+        camera.stop()

@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 from PySide6.QtWidgets import QApplication
 
+from piprints.camera import Camera, PiCamera
 from piprints.ui.screens.main_window import MainWindow
 
 
@@ -20,10 +21,15 @@ def create_application(arguments: Sequence[str] | None = None) -> QApplication:
     return QApplication(application_arguments)
 
 
-def create_main_window() -> MainWindow:
-    """Create the initial application window.
+def create_camera() -> Camera:
+    """Create the Raspberry Pi camera used by the application."""
+    return PiCamera()
 
-    Future concrete services are composed here and supplied to UI-facing
-    controllers, keeping hardware and workflow setup outside the UI package.
+
+def create_main_window(camera: Camera) -> MainWindow:
+    """Create the main window with its camera dependency.
+
+    Camera construction remains in this composition root so UI code depends on
+    the PiPrints camera contract rather than hardware implementations.
     """
-    return MainWindow()
+    return MainWindow(camera)
