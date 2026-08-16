@@ -4,18 +4,7 @@ from PIL import Image
 
 from piprints.imaging import Photo
 from piprints.printing import Printer, PrintResult
-
-
-class RecordingPrinter:
-    """Small hardware-free adapter used to exercise the public contract."""
-
-    def __init__(self) -> None:
-        self.photos: list[Photo] = []
-
-    def print_photo(self, photo: Photo) -> PrintResult:
-        """Record a prepared photo as an accepted print submission."""
-        self.photos.append(photo)
-        return PrintResult(job_id="test-job")
+from tests.fakes import FakePrinter
 
 
 def submit_photo(printer: Printer, photo: Photo) -> PrintResult:
@@ -26,9 +15,9 @@ def submit_photo(printer: Printer, photo: Photo) -> PrintResult:
 def test_printer_contract_accepts_a_prepared_photo() -> None:
     """Printer adapters receive the final image without imaging coordination."""
     photo = Photo(Image.new("RGB", (2, 3), "black"))
-    printer = RecordingPrinter()
+    printer = FakePrinter()
 
     result = submit_photo(printer, photo)
 
-    assert printer.photos == [photo]
-    assert result == PrintResult(job_id="test-job")
+    assert printer.print_requests == (photo,)
+    assert result == PrintResult(job_id="fake-print-1")
