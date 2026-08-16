@@ -4,7 +4,7 @@ captures/
 *.py[codz]
 *$py.class
 
-# C extensions
+# C extensions/
 *.so
 
 # Photos 

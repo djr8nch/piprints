@@ -64,7 +64,9 @@ def send_raw_bytes(transport: PrinterTransport) -> None:
 def test_printer_frames_and_sends_one_raster_command() -> None:
     """One prepared 8-dot image becomes one assumed ESC/POS raster command."""
     transport = RecordingTransport()
-    printer = PrimuzThermalPrinter(transport, ThermalRasterEncoder())
+    printer = PrimuzThermalPrinter(
+        transport, ThermalRasterEncoder(), bottom_margin_dots=0
+    )
 
     result = submit_photo(printer, Photo(Image.new("RGB", (8, 1), "black")))
 
@@ -91,12 +93,35 @@ def test_printer_uses_encoded_row_major_raster_data_once() -> None:
     image.putpixel((0, 0), (0, 0, 0))
     image.putpixel((7, 1), (0, 0, 0))
     transport = RecordingTransport()
-    printer = PrimuzThermalPrinter(transport, ThermalRasterEncoder())
+    printer = PrimuzThermalPrinter(
+        transport, ThermalRasterEncoder(), bottom_margin_dots=0
+    )
 
     printer.print_photo(Photo(image))
 
     assert transport.writes == [b"\x1d\x76\x30\x00\x01\x00\x02\x00\x80\x01"]
     assert len(transport.writes) == 1
+
+
+def test_printer_appends_white_raster_rows_for_a_tear_margin() -> None:
+    """The printer advances paper using blank rows in the raster command."""
+    transport = RecordingTransport()
+    printer = PrimuzThermalPrinter(
+        transport, ThermalRasterEncoder(), bottom_margin_dots=2
+    )
+
+    printer.print_photo(Photo(Image.new("RGB", (8, 1), "black")))
+
+    assert transport.writes == [b"\x1d\x76\x30\x00\x01\x00\x03\x00\xff\x00\x00"]
+
+
+@pytest.mark.parametrize("margin", [-1, 1.5, True])
+def test_printer_rejects_invalid_bottom_margin(margin: object) -> None:
+    """Tear-margin configuration must be a non-negative whole dot count."""
+    with pytest.raises(ValueError, match="Bottom raster margin"):
+        PrimuzThermalPrinter(  # type: ignore[arg-type]
+            RecordingTransport(), ThermalRasterEncoder(), bottom_margin_dots=margin
+        )
 
 
 def test_transport_failure_becomes_a_printer_error_and_closes() -> None:

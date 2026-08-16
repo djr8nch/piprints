@@ -32,6 +32,8 @@ from piprints.themes import ThemeCatalog, ThemeOption
 from piprints.ui import QtEventBridge
 from piprints.ui.screens.main_window import MainWindow
 
+_PRIMUZ_MC206H_PRINTABLE_WIDTH_DOTS = 384
+
 
 def create_application(arguments: Sequence[str] | None = None) -> QApplication:
     """Create the Qt application shared by all PiPrints UI components."""
@@ -57,10 +59,12 @@ def create_primuz_usb_printer(device_path: str | Path) -> Printer:
     """Create the validated USB transport wiring for a PRIMUZ MC206H.
 
     Callers supply the discovered Linux printer-class device path because it is
-    system-specific; no hardware printer is created by default.
+    system-specific; no hardware printer is created by default. The MC206H's
+    384-dot printable width was physically validated with the USB raster path.
     """
     return PrimuzThermalPrinter(
-        UsbPrinterTransport(device_path), ThermalRasterEncoder()
+        UsbPrinterTransport(device_path),
+        ThermalRasterEncoder(max_width=_PRIMUZ_MC206H_PRINTABLE_WIDTH_DOTS),
     )
 
 

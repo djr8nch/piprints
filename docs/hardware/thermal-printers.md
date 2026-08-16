@@ -66,15 +66,90 @@ the injected `ThermalRasterEncoder`, and sends one ESC/POS `GS v 0` raster
 command through any `PrinterTransport`. It has no branch for USB or serial;
 bootstrap or future explicit printer configuration selects the transport.
 
-The raw text test validates USB byte transport only. It does **not** yet prove
-that the MC206H accepts PiPrints' raster command, raster dimensions, polarity,
-or bit order. The adapter's raster command remains an ESC/POS assumption based
-on Epson's [GS v 0 command reference](https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/gs_lv_0.html).
+The raw text test initially validated USB byte transport only. Subsequent
+staged tests below physically validated the MC206H's acceptance of PiPrints'
+ESC/POS `GS v 0` raster command. The command format is documented in Epson's
+[GS v 0 command reference](https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/gs_lv_0.html).
 
-## Next hardware validation
+## Staged raster hardware validation
 
-Wire `UsbPrinterTransport("/dev/usb/lp0")` into `PrimuzThermalPrinter` at the
-composition boundary, then print a small representative PiPrints raster image.
-Confirm visible output, dot polarity, bit order, dimensions, and required feed
-behavior before marking image-printing hardware validation complete. Also test
-repeated jobs, disconnect recovery, paper-out behavior, and UI responsiveness.
+`scripts/validate_primuz_raster.py` is a manual-only hardware validation tool.
+It constructs in-memory `Photo` instances and always submits them through
+`create_primuz_usb_printer()`, so its path is:
+
+```text
+Photo / PiPrints layout
+-> PrimuzThermalPrinter
+-> ThermalRasterEncoder
+-> UsbPrinterTransport
+-> /dev/usb/lp0
+```
+
+It neither writes directly to the device nor uses `sudo`. Its documented
+development default is `/dev/usb/lp0`; pass `--device` when discovery gives a
+different path. It checks that the current user can write to the selected node
+before submitting anything.
+
+Run one stage at a time and inspect the paper before explicitly acknowledging a
+previous stage:
+
+```bash
+.venv/bin/python scripts/validate_primuz_raster.py --stage 1
+.venv/bin/python scripts/validate_primuz_raster.py --stage 2 --confirm-stage-1 \
+  --printable-width <verified-dot-width>
+.venv/bin/python scripts/validate_primuz_raster.py --stage 3 --confirm-stage-1 \
+  --confirm-stage-2 --printable-width <verified-dot-width>
+```
+
+Stage 1 prints a 64-by-56-dot asymmetric pattern: left-growing black blocks,
+a full black bar, a stepped mark at the right edge, offset alternating rows,
+and uneven lower blocks. It exposes polarity, horizontal bit order, mirroring,
+row order, shifts, and byte-padding errors. Stage 2 prints the provided,
+verified printable width with edge markers, a full-width bar, unequal vertical
+patterns, alternating blocks, and whitespace. Stage 3 uses
+`ClassicPhotoStripLayout` to compose four synthetic photos at that width; it
+checks the actual final-layout input shape without requiring a user photo.
+
+## Physical raster validation record
+
+An operator inspected the following outputs on the Raspberry Pi 4 / PRIMUZ
+MC206H setup after normal-user device permissions were fixed:
+
+- Stage 1 deterministic raster: passed; black/white polarity, left-to-right
+  bit order, row order, and asymmetric right-edge marker were correct;
+- Stage 2 full-width raster: passed at 384 dots; both edge markers and the
+  continuous horizontal bar printed without clipping, wrapping, mirroring, or
+  byte-padding artifacts. The observed output did not leave enough blank paper
+  to tear comfortably, so it prompted the narrow printer-adapter correction
+  below; and
+- the validated 384-dot width is now enforced by
+  `create_primuz_usb_printer()` so oversized photos fail before opening the
+  device.
+
+`PrimuzThermalPrinter` now appends 32 all-white raster rows (4 mm at 203 dpi)
+to each job. This creates tear space using the already validated raster
+framing, instead of relying on an unvalidated `ESC d` feed command. A repeated
+Stage 2 print confirmed that this margin leaves comfortable tear space while
+preserving the correct full-width pattern.
+
+Stage 3 representative layout: passed at 384 dots. The physical output had
+four correctly oriented panel rectangles and two dark ovals; the two lighter
+grayscale ovals correctly thresholded to white. The full-width strip was
+recognizable, was neither mirrored nor clipped, and retained comfortable tear
+space. Raster image printing through the validated USB path can now be
+considered physically validated for this printer setup.
+
+## Remaining hardware validation
+
+The following remain outside the completed single-job raster validation:
+
+- repeated-job behavior and buffer limits;
+- USB disconnect/reconnect recovery;
+- paper-out handling; and
+- UI responsiveness during a print job.
+
+Do not describe PRIMUZ image printing as physically validated merely because
+paper feeds. Record the expected versus observed appearance for all three
+stages, including the normal-user device permission result. Repeated jobs,
+disconnect recovery, paper-out behavior, and UI responsiveness remain separate
+follow-up hardware tests after raster support is validated.
