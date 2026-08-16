@@ -26,15 +26,16 @@
 ## Current alpha scope
 
 PiPrints currently runs on Raspberry Pi OS with a Raspberry Pi Camera Module 3.
-It provides a PySide6 live preview and a basic booth flow:
+It provides a PySide6 live preview and a multi-photo booth flow:
 
 ```text
-Live preview → 3-second countdown → still capture → review → retake
+Live preview → countdown → capture → session progress → final layout review → retake
 ```
 
 Captured runtime images are written to the ignored `captures/` directory. This
-alpha does not yet implement printing, sessions, persistent storage,
-multi-photo layouts, themes, sharing, GPIO input, or video recording.
+alpha includes four-photo grid and classic strip composition. It does not yet
+implement printing, persistent storage, themes, sharing, GPIO input, or video
+recording.
 
 ## Quick start
 

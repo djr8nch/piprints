@@ -52,3 +52,21 @@ python -m ruff check .
 GitHub Actions runs the same boundaries in separate jobs: **Lint**, **Unit
 tests**, and **Integration tests**. Default CI must never require Raspberry Pi
 hardware.
+
+## Imaging benchmarks
+
+Run the standalone imaging benchmark on a Raspberry Pi reference device with:
+
+```bash
+PYTHONPATH=src python scripts/benchmark_imaging.py
+```
+
+Use `--repetitions` to collect more samples, for example
+`PYTHONPATH=src python scripts/benchmark_imaging.py --repetitions 10`. The
+script generates 1920x1080 and 4608x2592 RGB images in memory and reports mean
+elapsed time for framing calculation, crop, resize, the crop-and-resize
+pipeline, and the current single-photo imaging pipeline.
+
+These figures establish historical Raspberry Pi baselines and help identify
+regressions; they are not CI pass/fail thresholds. GitHub-hosted x86 timing is
+not representative of PiPrints runtime performance.

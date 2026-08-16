@@ -9,3 +9,4 @@ PiPrints alpha implementation.
 - [ADR 0004: Lightweight dependency injection through bootstrap.py](0004-bootstrap-composition-root.md)
 - [ADR 0005: System-site-packages virtual environment](0005-system-site-packages-venv.md)
 - [ADR 0006: Separate per-photo processing from layout composition](0006-photo-pipeline-and-layout.md)
+- [ADR 0007: Separate framing strategy from pixel operations](0007-framing-strategy-and-pixel-operations.md)

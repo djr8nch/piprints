@@ -24,9 +24,6 @@ from piprints.ui.widgets.camera_preview import CameraPreviewWidget
 
 logger = logging.getLogger(__name__)
 
-_COUNTDOWN_SECONDS = 3
-
-
 class _CaptureWorker(QThread):
     """Run the blocking booth capture operation away from the UI thread."""
 
@@ -47,7 +44,7 @@ class _CaptureWorker(QThread):
 
 
 class BoothScreen(QWidget):
-    """Render the basic capture workflow and forward intent to the controller."""
+    """Render session workflow state and forward intent to the controller."""
 
     def __init__(self, camera: Camera, controller: BoothController) -> None:
         super().__init__()
@@ -59,6 +56,8 @@ class BoothScreen(QWidget):
         self._countdown_label = QLabel()
         self._countdown_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._countdown_label.setStyleSheet("font-size: 48px; font-weight: bold;")
+        self._progress_label = QLabel()
+        self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._take_photo_button = QPushButton("Take Photo")
         self._take_photo_button.clicked.connect(self._start_countdown)
 
@@ -66,6 +65,7 @@ class BoothScreen(QWidget):
         preview_layout = QVBoxLayout(preview_page)
         preview_layout.setContentsMargins(0, 0, 0, 0)
         preview_layout.addWidget(self._preview, stretch=1)
+        preview_layout.addWidget(self._progress_label)
         preview_layout.addWidget(self._countdown_label)
         preview_layout.addWidget(self._take_photo_button)
 
@@ -95,6 +95,7 @@ class BoothScreen(QWidget):
         self._countdown_timer = QTimer(self)
         self._countdown_timer.setInterval(1000)
         self._countdown_timer.timeout.connect(self._advance_countdown)
+        self._update_progress()
 
     def start(self) -> None:
         """Start live preview when the window becomes visible."""
@@ -115,27 +116,37 @@ class BoothScreen(QWidget):
 
     def _start_countdown(self) -> None:
         """Begin a non-blocking three-second countdown."""
-        self._controller.start_countdown()
+        countdown_value = self._controller.start_countdown()
         self._take_photo_button.setEnabled(False)
-        self._seconds_remaining = _COUNTDOWN_SECONDS
-        self._countdown_label.setText(str(self._seconds_remaining))
+        self._countdown_label.setText(str(countdown_value))
+        self._update_progress()
         self._countdown_timer.start()
 
     def _advance_countdown(self) -> None:
         """Update the UI countdown or begin the capture operation."""
-        self._seconds_remaining -= 1
-        if self._seconds_remaining > 0:
-            self._countdown_label.setText(str(self._seconds_remaining))
+        remaining_seconds = self._controller.advance_countdown()
+        if remaining_seconds is not None:
+            self._countdown_label.setText(str(remaining_seconds))
             return
 
         self._countdown_timer.stop()
         self._countdown_label.setText("Capturing…")
         self._preview.stop()
         self._capture_worker = _CaptureWorker(self._controller)
-        self._capture_worker.capture_succeeded.connect(self._show_review)
+        self._capture_worker.capture_succeeded.connect(self._handle_capture_result)
         self._capture_worker.capture_failed.connect(self._recover_from_capture_failure)
         self._capture_worker.finished.connect(self._capture_worker_finished)
         self._capture_worker.start()
+
+    def _handle_capture_result(self, photo: Photo | None) -> None:
+        """Resume capture progress or show the completed session composition."""
+        if photo is None:
+            self._countdown_label.clear()
+            self._take_photo_button.setEnabled(True)
+            self._update_progress()
+            self._preview.start()
+            return
+        self._show_review(photo)
 
     def _show_review(self, photo: Photo) -> None:
         """Present the final photo and transition the UI to review."""
@@ -151,6 +162,7 @@ class BoothScreen(QWidget):
         """Return to idle preview after a failed camera capture."""
         self._countdown_label.setText(f"Capture failed\n{message}")
         self._take_photo_button.setEnabled(True)
+        self._update_progress()
         self._preview.start()
 
     def _capture_worker_finished(self) -> None:
@@ -166,8 +178,19 @@ class BoothScreen(QWidget):
         self._review_label.clear()
         self._countdown_label.clear()
         self._take_photo_button.setEnabled(True)
+        self._update_progress()
         self._pages.setCurrentIndex(0)
         self._preview.start()
+
+    def _update_progress(self) -> None:
+        """Render progress from the controller-owned capture session."""
+        session = self._controller.session
+        if session is None:
+            self._progress_label.clear()
+            return
+        self._progress_label.setText(
+            f"Photo {session.photo_count + 1} of {session.target_photo_count}"
+        )
 
     def _update_review_pixmap(self) -> None:
         """Fit the current reviewed image within its display area."""

@@ -80,6 +80,7 @@ def test_retake_returns_to_idle_preview(tmp_path: Path) -> None:
 
     assert controller.state is BoothState.IDLE
     assert controller.last_capture is None
+    assert controller.session is None
 
 
 def test_retake_outside_review_raises_state_error(tmp_path: Path) -> None:
@@ -104,6 +105,7 @@ def test_capture_failure_returns_to_idle_and_preserves_cause(tmp_path: Path) -> 
     assert error_info.value.__cause__ is camera_error
     assert controller.state is BoothState.IDLE
     assert controller.last_capture is None
+    assert controller.session is None
 
 
 def test_capture_workflow_can_be_repeated(tmp_path: Path) -> None:
@@ -165,3 +167,47 @@ def test_capture_processes_photo_and_uses_selected_layout(tmp_path: Path) -> Non
     assert len(operation.photos) == 1
     assert layout.photos == (operation.photos[0],)
     assert final_photo is operation.photos[0]
+
+
+class TwoPhotoRecordingLayout:
+    """A layout double that proves controller composition waits for completion."""
+
+    required_photos = 2
+
+    def __init__(self) -> None:
+        self.photos: tuple[Photo, ...] | None = None
+
+    def compose(self, photos: tuple[Photo, ...]) -> Photo:
+        """Record the complete session and return its first photo for testing."""
+        self.photos = photos
+        return photos[0]
+
+
+def test_controller_collects_a_multi_photo_session_before_review(
+    tmp_path: Path,
+) -> None:
+    """Incomplete sessions resume preview; only a complete session is reviewed."""
+    layout = TwoPhotoRecordingLayout()
+    controller = BoothController(
+        camera=FakeCamera(),
+        capture_directory=tmp_path / "captures",
+        photo_loader=PhotoLoader(),
+        photo_pipeline=PhotoPipeline(),
+        layout=layout,
+    )
+
+    controller.start_countdown()
+    assert controller.capture() is None
+    assert controller.state is BoothState.IDLE
+    assert controller.session is not None
+    assert controller.session.photo_count == 1
+    assert controller.session.remaining_photos == 1
+    assert layout.photos is None
+
+    controller.start_countdown()
+    final_photo = controller.capture()
+
+    assert controller.state is BoothState.REVIEW
+    assert final_photo is controller.last_capture
+    assert layout.photos is not None
+    assert len(layout.photos) == 2

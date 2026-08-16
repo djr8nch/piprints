@@ -9,6 +9,14 @@ class InvalidPhotoError(ImagingError):
     """Raised when a value cannot be used as a PiPrints photo."""
 
 
+class InvalidAspectRatioError(ImagingError):
+    """Raised when an aspect ratio has invalid dimensions."""
+
+
+class InvalidCropError(ImagingError):
+    """Raised when a crop region is invalid for a photo."""
+
+
 class LayoutError(ImagingError):
     """Base class for layout-composition failures."""
 

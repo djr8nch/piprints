@@ -24,3 +24,10 @@ def test_resize_rejects_non_positive_dimensions(width: int, height: int) -> None
     """Resize dimensions must be positive integers."""
     with pytest.raises(ValueError, match="positive integers"):
         ResizeOperation(width, height)
+
+
+@pytest.mark.parametrize("width,height", [(1.5, 1), (1, 1.5), (True, 1)])
+def test_resize_rejects_non_integer_dimensions(width: object, height: object) -> None:
+    """Resize dimensions must be integer pixel counts."""
+    with pytest.raises(ValueError, match="positive integers"):
+        ResizeOperation(width, height)  # type: ignore[arg-type]

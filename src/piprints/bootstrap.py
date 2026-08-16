@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication
 from piprints.booth import BoothController
 from piprints.camera import Camera, PiCamera
 from piprints.imaging import PhotoLoader, PhotoPipeline
-from piprints.imaging.layouts import SinglePhotoLayout
+from piprints.imaging.layouts import FourPhotoLayout
 from piprints.ui.screens.main_window import MainWindow
 
 
@@ -40,7 +40,7 @@ def create_booth(
         capture_directory=directory,
         photo_loader=PhotoLoader(),
         photo_pipeline=PhotoPipeline(),
-        layout=SinglePhotoLayout(),
+        layout=FourPhotoLayout(),
     )
 
 
