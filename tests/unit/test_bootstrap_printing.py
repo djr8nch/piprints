@@ -1,5 +1,7 @@
 """Tests for optional printer composition at the application boundary."""
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -8,6 +10,27 @@ import piprints.bootstrap as bootstrap
 from piprints.bootstrap import create_primuz_usb_printer, create_production_printer
 from piprints.printing.thermal import PrimuzThermalPrinter
 from tests.fakes import FakePrinter
+
+
+def test_printer_factory_import_does_not_load_qt_widgets() -> None:
+    """Headless printer composition must not require Qt graphics libraries."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "from piprints.bootstrap import create_primuz_usb_printer; "
+                "assert 'PySide6.QtWidgets' not in sys.modules; "
+                "create_primuz_usb_printer('/dev/usb/lp-test')"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_primuz_usb_factory_creates_a_printer_without_opening_the_device() -> None:

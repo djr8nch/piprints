@@ -7,8 +7,7 @@ import os
 import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-
-from PySide6.QtWidgets import QApplication
+from typing import TYPE_CHECKING
 
 from piprints.booth import (
     BoothController,
@@ -31,9 +30,12 @@ from piprints.printing.thermal import (
 )
 from piprints.storage import FilesystemPhotoStorage, PhotoStorage
 from piprints.themes import ThemeCatalog, ThemeOption
-from piprints.ui import QtEventBridge
-from piprints.ui.screens.main_window import MainWindow
-from piprints.ui.styling import apply_default_style
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QApplication
+
+    from piprints.ui import QtEventBridge
+    from piprints.ui.screens.main_window import MainWindow
 
 _PRIMUZ_MC206H_PRINTABLE_WIDTH_DOTS = 384
 _DEFAULT_PRIMUZ_USB_DEVICE_PATH = Path("/dev/usb/lp0")
@@ -42,7 +44,16 @@ logger = logging.getLogger(__name__)
 
 
 def create_application(arguments: Sequence[str] | None = None) -> QApplication:
-    """Create the Qt application shared by all PiPrints UI components."""
+    """Create the Qt application shared by all PiPrints UI components.
+
+    Imports remain local so hardware-independent bootstrap factories, notably
+    printer construction, can be imported on headless Linux systems without
+    loading the Qt runtime.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    from piprints.ui.styling import apply_default_style
+
     existing_application = QApplication.instance()
     if existing_application is not None:
         apply_default_style(existing_application)
@@ -165,6 +176,8 @@ def create_booth(
 
 def create_event_bridge() -> QtEventBridge:
     """Create the Qt adapter for booth events at the presentation boundary."""
+    from piprints.ui import QtEventBridge
+
     return QtEventBridge()
 
 
@@ -178,4 +191,6 @@ def create_main_window(
     Camera construction remains in this composition root so UI code depends on
     the PiPrints camera contract rather than hardware implementations.
     """
+    from piprints.ui.screens.main_window import MainWindow
+
     return MainWindow(camera, booth, event_bridge)

@@ -302,6 +302,10 @@ behavior are documented in the [booth lifecycle](booth-lifecycle.md).
 - Booth logic must not know PySide6 widget details.
 - `bootstrap.py` may depend on concrete implementations because it is the
   composition root.
+- Qt modules are imported only inside the UI-composition factories
+  (`create_application`, `create_event_bridge`, and `create_main_window`).
+  This keeps hardware-independent bootstrap factories, including printer
+  construction, importable on headless Linux systems without loading PySide6.
 - Business rules should use PiPrints-owned abstractions where practical.
 - Default CI must not require Raspberry Pi hardware.
 
