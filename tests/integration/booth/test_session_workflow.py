@@ -9,6 +9,7 @@ import pytest
 from piprints.booth import (
     BoothCaptureError,
     BoothController,
+    BoothErrorCategory,
     BoothEvent,
     BoothEventType,
     BoothPrintError,
@@ -251,6 +252,7 @@ def test_camera_failure_enters_error_then_resets_cleanly(tmp_path: Path) -> None
     ]
     assert listener.events[-1].state is BoothState.ERROR
     assert listener.events[-1].message == "camera disconnected"
+    assert listener.events[-1].error_category is BoothErrorCategory.PHOTO_CAPTURE_FAILED
 
     controller.reset_session()
 

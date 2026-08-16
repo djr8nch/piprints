@@ -29,6 +29,15 @@ class BoothEventType(Enum):
     ERROR = auto()
 
 
+class BoothErrorCategory(Enum):
+    """Customer-meaningful classes of unrecoverable booth workflow failures."""
+
+    CAMERA_UNAVAILABLE = auto()
+    PHOTO_CAPTURE_FAILED = auto()
+    PHOTO_PROCESSING_FAILED = auto()
+    UNEXPECTED = auto()
+
+
 @dataclass(frozen=True, slots=True)
 class BoothEvent:
     """Describe one booth occurrence without depending on a presentation layer."""
@@ -41,6 +50,7 @@ class BoothEvent:
     photo: Photo | None = None
     output_path: Path | None = None
     print_result: PrintResult | None = None
+    error_category: BoothErrorCategory | None = None
     message: str | None = None
 
 

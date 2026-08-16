@@ -24,6 +24,7 @@ class QtEventBridge(QObject):
     print_failed = Signal(str)
     review_ready = Signal(object)
     error_occurred = Signal(str)
+    error_presented = Signal(object)
 
     def on_booth_event(self, event: BoothEvent) -> None:
         """Translate one supported application event into a Qt signal."""
@@ -50,6 +51,7 @@ class QtEventBridge(QObject):
                 if event.photo is not None:
                     self.review_ready.emit(event.photo)
             case BoothEventType.ERROR:
+                self.error_presented.emit(event)
                 self.error_occurred.emit(
                     event.message or "An unexpected booth error occurred."
                 )

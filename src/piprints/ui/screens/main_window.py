@@ -42,7 +42,7 @@ class MainWindow(QMainWindow):
         self._pages.addWidget(self._error_screen)
         self.setCentralWidget(self._pages)
         event_bridge.state_changed.connect(self._present_state)
-        event_bridge.error_occurred.connect(self._error_screen.show_message)
+        event_bridge.error_presented.connect(self._error_screen.show_error)
         self._present_state(BoothState.IDLE, booth.state)
 
     def showEvent(self, event: QShowEvent) -> None:

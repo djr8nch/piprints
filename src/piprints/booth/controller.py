@@ -8,11 +8,22 @@ from datetime import datetime
 from pathlib import Path
 
 from piprints.booth.countdown import Countdown
-from piprints.booth.events import BoothEvent, BoothEventListener, BoothEventType
+from piprints.booth.events import (
+    BoothErrorCategory,
+    BoothEvent,
+    BoothEventListener,
+    BoothEventType,
+)
 from piprints.booth.layout_selection import LayoutCatalog, LayoutOption
 from piprints.booth.session import BoothSession
 from piprints.booth.state import BoothState
-from piprints.camera import Camera
+from piprints.camera import (
+    Camera,
+    CameraCaptureError,
+    CameraNotStartedError,
+    CameraPreviewError,
+    CameraStartupError,
+)
 from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import Layout
 from piprints.printing import Printer, PrintError, PrintResult
@@ -256,7 +267,7 @@ class BoothController:
                 self._publish(BoothEventType.COUNTDOWN_TICK, countdown_value=tick)
             self._transition_to(BoothState.CAPTURING)
         except Exception as error:
-            self._abort_session(error)
+            self._abort_session(error, BoothErrorCategory.PHOTO_CAPTURE_FAILED)
             raise
 
     def capture(self) -> Photo | None:
@@ -274,15 +285,21 @@ class BoothController:
 
         try:
             captured_image = self._camera.capture(destination)
+        except Exception as error:
+            self._abort_session(error, self._camera_error_category(error))
+            logger.exception("Booth camera capture failed")
+            raise BoothCaptureError("Unable to capture a photo.") from error
+
+        try:
             captured_photo = self._photo_loader.load(captured_image)
             processed_photo = self._photo_pipeline.process(captured_photo)
             session = self._require_session()
             session.add_captured_photo(processed_photo)
             self._publish(BoothEventType.PHOTO_CAPTURED, photo=processed_photo)
         except Exception as error:
-            self._abort_session(error)
-            logger.exception("Booth capture failed")
-            raise BoothCaptureError("Unable to capture a photo.") from error
+            self._abort_session(error, BoothErrorCategory.PHOTO_PROCESSING_FAILED)
+            logger.exception("Booth photo processing failed")
+            raise BoothCaptureError("Unable to prepare a photo.") from error
 
         if not session.is_complete:
             self._transition_to(BoothState.PREPARING)
@@ -299,7 +316,7 @@ class BoothController:
             final_photo = self._layout.compose(session.captured_photos)
             session.set_final_photo(final_photo)
         except Exception as error:
-            self._abort_session(error)
+            self._abort_session(error, BoothErrorCategory.PHOTO_PROCESSING_FAILED)
             logger.exception("Booth layout composition failed")
             raise BoothCaptureError("Unable to compose the captured photos.") from error
 
@@ -343,10 +360,14 @@ class BoothController:
             previous_state=previous_state,
         )
 
-    def _abort_session(self, error: Exception) -> None:
+    def _abort_session(self, error: Exception, category: BoothErrorCategory) -> None:
         """Clear failed artifacts while leaving recovery at the error boundary."""
         self._transition_to(BoothState.ERROR)
-        self._publish(BoothEventType.ERROR, message=str(error))
+        self._publish(
+            BoothEventType.ERROR,
+            error_category=category,
+            message=str(error),
+        )
         self._session = None
 
     def _publish(
@@ -358,6 +379,7 @@ class BoothController:
         photo: Photo | None = None,
         output_path: Path | None = None,
         print_result: PrintResult | None = None,
+        error_category: BoothErrorCategory | None = None,
         message: str | None = None,
     ) -> None:
         """Notify listeners while isolating failures from booth workflow logic."""
@@ -370,6 +392,7 @@ class BoothController:
             photo=photo,
             output_path=output_path,
             print_result=print_result,
+            error_category=error_category,
             message=message,
         )
         for listener in tuple(self._listeners):
@@ -385,6 +408,18 @@ class BoothController:
         if self._session is None:
             raise BoothStateError("Capture requires an active capture session.")
         return self._session
+
+    @staticmethod
+    def _camera_error_category(error: Exception) -> BoothErrorCategory:
+        """Classify PiPrints camera errors without exposing adapter details to UI."""
+        if isinstance(
+            error,
+            (CameraNotStartedError, CameraPreviewError, CameraStartupError),
+        ):
+            return BoothErrorCategory.CAMERA_UNAVAILABLE
+        if isinstance(error, CameraCaptureError):
+            return BoothErrorCategory.PHOTO_CAPTURE_FAILED
+        return BoothErrorCategory.PHOTO_CAPTURE_FAILED
 
     @staticmethod
     def _catalog_for_layout(layout: Layout) -> LayoutCatalog:

@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PIL import Image
 from PySide6.QtWidgets import QApplication
 
-from piprints.booth import BoothEvent, BoothEventType, BoothState
+from piprints.booth import BoothErrorCategory, BoothEvent, BoothEventType, BoothState
 from piprints.imaging import Photo
 from piprints.printing import PrintResult
 from piprints.ui import QtEventBridge
@@ -70,6 +70,24 @@ def test_bridge_surfaces_booth_error_messages() -> None:
     )
 
     assert received == ["camera disconnected"]
+
+
+def test_bridge_forwards_error_category_without_replacing_diagnostics() -> None:
+    """The kiosk presentation receives the typed application failure event."""
+    QApplication.instance() or QApplication(["piprints"])
+    bridge = QtEventBridge()
+    received: list[BoothEvent] = []
+    bridge.error_presented.connect(received.append)
+    event = BoothEvent(
+        event_type=BoothEventType.ERROR,
+        state=BoothState.ERROR,
+        error_category=BoothErrorCategory.PHOTO_PROCESSING_FAILED,
+        message="internal operation details",
+    )
+
+    bridge.on_booth_event(event)
+
+    assert received == [event]
 
 
 def test_bridge_preserves_review_ready_photo() -> None:
