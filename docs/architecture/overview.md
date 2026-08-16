@@ -16,8 +16,8 @@ the application and owns process-level camera cleanup. `bootstrap.py` is the
 composition root: it creates `PiCamera`, `PhotoPipeline`, `FourPhotoLayout`,
 `BoothController`, and `MainWindow`, then injects the dependencies they need.
 
-`BoothController` owns the workflow state (`IDLE`, `COUNTDOWN`, `CAPTURING`,
-and `REVIEW`) and requests still captures through the `Camera` contract. A
+`BoothController` owns the workflow state and requests still captures through
+the `Camera` contract. A
 `CaptureSession` is the source of truth for ordered processed photos and their
 progress. The controller creates it from the selected layout's
 `required_photos`, adds each processed capture, and composes only after it is
@@ -126,6 +126,36 @@ The preview worker stops before the still capture begins. Picamera2 restores
 the preview configuration after the still capture, and the preview worker is
 started again when the user selects **Retake**. Captures currently go to the
 runtime `captures/` directory; this is not a storage or session subsystem.
+
+## Booth lifecycle states
+
+`BoothState` is the booth layer's framework-independent lifecycle vocabulary.
+It is a small enum, not a class-per-state State pattern. The current controller
+uses the capture subset (`IDLE`, `COUNTDOWN`, `CAPTURING`, and `REVIEW`); the
+remaining states establish explicit boundaries for later orchestration without
+introducing that behavior now.
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> PREPARING
+    PREPARING --> COUNTDOWN
+    COUNTDOWN --> CAPTURING
+    CAPTURING --> PROCESSING
+    PROCESSING --> REVIEW
+    REVIEW --> COMPLETE
+    COMPLETE --> IDLE
+    PREPARING --> ERROR
+    COUNTDOWN --> ERROR
+    CAPTURING --> ERROR
+    PROCESSING --> ERROR
+    ERROR --> IDLE
+```
+
+The diagram is the intended session lifecycle model, not a claim that every
+transition is implemented. `PREPARING`, `PROCESSING`, `COMPLETE`, and `ERROR`
+will be activated by later workflow milestones. The enum has no dependency on
+Qt, hardware, imaging, printing, or persistence.
 
 ## Package responsibilities
 
