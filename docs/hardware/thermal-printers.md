@@ -73,8 +73,16 @@ The current booth layouts are wider than the 384-dot print head. The PRIMUZ
 factory therefore explicitly configures `ThermalRasterEncoder` to fit oversized
 final layouts proportionally to 384 dots before monochrome encoding. This
 printer-specific preparation preserves the digital saved layout while avoiding
-hardware clipping; its normal-session output requires the manual validation
-described below.
+hardware clipping. It also enables Floyd–Steinberg dithering for normal photos:
+the monochrome print head still produces only black and white dots, but their
+pattern represents perceived gray tones. Physical testing showed the first
+tuning was too dark, so the current profile lifts brightness by 1.15x before
+applying 1.35x contrast to preserve shadow detail while separating midtones.
+Facial midtones remained too dark, so a 0.8 gamma lift now precedes those
+adjustments; it brightens midtones without changing the black and white
+endpoints. Threshold-only encoding remains the default for deterministic
+diagnostics and tests. The adjusted normal-session output requires the manual
+validation described below.
 
 If the node is absent or inaccessible, bootstrap injects no printer and the
 application starts in its existing digital-only mode. The temporary device path

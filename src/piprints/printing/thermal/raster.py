@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PIL import Image
+from PIL import Image, ImageEnhance
 
 from piprints.imaging import Photo
 
@@ -33,6 +33,10 @@ class ThermalRasterEncoder:
         max_width: int | None = None,
         threshold: int = 128,
         fit_to_max_width: bool = False,
+        dither: bool = False,
+        contrast: float = 1.0,
+        brightness: float = 1.0,
+        gamma: float = 1.0,
     ) -> None:
         if (
             max_width is not None
@@ -53,9 +57,33 @@ class ThermalRasterEncoder:
             )
         if not isinstance(fit_to_max_width, bool):
             raise ValueError("Thermal raster fit-to-width setting must be a boolean.")
+        if not isinstance(dither, bool):
+            raise ValueError("Thermal raster dithering setting must be a boolean.")
+        if (
+            isinstance(contrast, bool)
+            or not isinstance(contrast, int | float)
+            or contrast <= 0
+        ):
+            raise ValueError("Thermal raster contrast must be a positive number.")
+        if (
+            isinstance(brightness, bool)
+            or not isinstance(brightness, int | float)
+            or brightness <= 0
+        ):
+            raise ValueError("Thermal raster brightness must be a positive number.")
+        if (
+            isinstance(gamma, bool)
+            or not isinstance(gamma, int | float)
+            or gamma <= 0
+        ):
+            raise ValueError("Thermal raster gamma must be a positive number.")
         self._max_width = max_width
         self._threshold = threshold
         self._fit_to_max_width = fit_to_max_width
+        self._dither = dither
+        self._contrast = contrast
+        self._brightness = brightness
+        self._gamma = gamma
 
     def encode(self, photo: Photo) -> ThermalRaster:
         """Convert a prepared photo to monochrome, byte-aligned raster data.
@@ -79,6 +107,18 @@ class ThermalRasterEncoder:
             )
 
         monochrome = image.convert("L")
+        if self._gamma != 1.0:
+            monochrome = monochrome.point(
+                [round(255 * (value / 255) ** self._gamma) for value in range(256)]
+            )
+        if self._brightness != 1.0:
+            monochrome = ImageEnhance.Brightness(monochrome).enhance(self._brightness)
+        if self._contrast != 1.0:
+            monochrome = ImageEnhance.Contrast(monochrome).enhance(self._contrast)
+        if self._dither:
+            monochrome = monochrome.convert(
+                "1", dither=Image.Dither.FLOYDSTEINBERG
+            )
         bytes_per_row = (monochrome.width + 7) // 8
         raster_data = bytearray(bytes_per_row * monochrome.height)
         pixels = monochrome.load()

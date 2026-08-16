@@ -72,6 +72,10 @@ def create_primuz_usb_printer(device_path: str | Path) -> Printer:
         ThermalRasterEncoder(
             max_width=_PRIMUZ_MC206H_PRINTABLE_WIDTH_DOTS,
             fit_to_max_width=True,
+            dither=True,
+            brightness=1.15,
+            contrast=1.35,
+            gamma=0.8,
         ),
     )
 

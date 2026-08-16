@@ -83,6 +83,62 @@ def test_encoder_uses_a_deterministic_grayscale_threshold() -> None:
     assert raster.data == b"\x80"
 
 
+def test_encoder_can_dither_grayscale_with_floyd_steinberg_diffusion() -> None:
+    """Dithering represents tones as a deterministic pattern of thermal dots."""
+    pixels = [
+        (value, value, value)
+        for value in (
+            32,
+            64,
+            96,
+            128,
+            160,
+            192,
+            224,
+            240,
+            240,
+            224,
+            192,
+            160,
+            128,
+            96,
+            64,
+            32,
+        )
+    ]
+
+    raster = ThermalRasterEncoder(dither=True).encode(photo_from_pixels(8, 2, pixels))
+
+    assert raster.data == b"\xd0\x17"
+
+
+def test_encoder_applies_contrast_before_dithering() -> None:
+    """A contrast adjustment intentionally affects the thermal dot pattern."""
+    photo = photo_from_pixels(2, 1, [(120, 120, 120), (126, 126, 126)])
+
+    raster = ThermalRasterEncoder(contrast=2.0).encode(photo)
+
+    assert raster.data == b"\x80"
+
+
+def test_encoder_applies_brightness_before_thresholding() -> None:
+    """Brightness lifting can preserve detail that would otherwise print black."""
+    photo = photo_from_pixels(1, 1, [(100, 100, 100)])
+
+    raster = ThermalRasterEncoder(brightness=1.5).encode(photo)
+
+    assert raster.data == b"\x00"
+
+
+def test_encoder_lifts_midtones_with_gamma_before_thresholding() -> None:
+    """A sub-one gamma value brightens facial-range midtones without new hardware."""
+    photo = photo_from_pixels(1, 1, [(128, 128, 128)])
+
+    raster = ThermalRasterEncoder(gamma=0.5).encode(photo)
+
+    assert raster.data == b"\x00"
+
+
 def test_encoder_reports_byte_aligned_dimensions_for_larger_images() -> None:
     """Output shape is derivable without any printer transport behavior."""
     raster = ThermalRasterEncoder().encode(Photo(Image.new("RGB", (9, 3), "black")))
@@ -136,3 +192,31 @@ def test_encoder_rejects_non_boolean_fit_to_width_setting(
         ThermalRasterEncoder(
             fit_to_max_width=fit_to_max_width  # type: ignore[arg-type]
         )
+
+
+@pytest.mark.parametrize("dither", [0, "yes", None])
+def test_encoder_rejects_non_boolean_dithering_setting(dither: object) -> None:
+    """Dithering must be an explicit encoder configuration choice."""
+    with pytest.raises(ValueError, match="dithering setting"):
+        ThermalRasterEncoder(dither=dither)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("contrast", [0, -1, 1.5j, "more", True])
+def test_encoder_rejects_invalid_contrast(contrast: object) -> None:
+    """Contrast must remain an explicit positive numeric encoder setting."""
+    with pytest.raises(ValueError, match="contrast"):
+        ThermalRasterEncoder(contrast=contrast)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("brightness", [0, -1, 1.5j, "brighter", True])
+def test_encoder_rejects_invalid_brightness(brightness: object) -> None:
+    """Brightness must remain an explicit positive numeric encoder setting."""
+    with pytest.raises(ValueError, match="brightness"):
+        ThermalRasterEncoder(brightness=brightness)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("gamma", [0, -1, 1.5j, "lighter", True])
+def test_encoder_rejects_invalid_gamma(gamma: object) -> None:
+    """Gamma must remain an explicit positive numeric encoder setting."""
+    with pytest.raises(ValueError, match="gamma"):
+        ThermalRasterEncoder(gamma=gamma)  # type: ignore[arg-type]
