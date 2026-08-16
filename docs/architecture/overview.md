@@ -94,6 +94,15 @@ flowchart BT
     Adapter["Hardware-specific printer adapter"] --> Printer
 ```
 
+`piprints.printing.thermal.ThermalRasterEncoder` is a pure printer-preparation
+component, not a transport adapter. It converts an already composed `Photo` to
+row-major monochrome bytes: black dots are set bits, leftmost dots occupy the
+most-significant bit, and each row is padded with white bits to a whole byte.
+An optional configured maximum dot width rejects oversized photos rather than
+silently resizing, cropping, or changing the booth layout. Any printer-width
+resizing will be a separate, explicit preparation decision before encoding.
+Protocol framing and hardware transport remain future adapter responsibilities.
+
 The UI depends directly on the PiPrints-owned camera contract only for preview
 frames. Workflow commands travel through `BoothController`; neither path gives
 the UI a Picamera2 or libcamera object. A focused UI presentation adapter turns
