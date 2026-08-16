@@ -69,6 +69,7 @@ class MainWindow(QMainWindow):
         if state is BoothState.IDLE:
             self._booth_screen.stop()
             self._booth_screen.reset_presentation()
+            self._error_screen.reset_presentation()
             self._home_screen.reset_presentation()
             self._show_home()
             return

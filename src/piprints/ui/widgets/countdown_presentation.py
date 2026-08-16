@@ -19,6 +19,10 @@ class CountdownPresentation(QWidget):
         super().__init__()
         self._number_label = QLabel()
         self._number_label.setObjectName("countdownNumber")
+        self._number_label.setAccessibleName("Countdown to photo")
+        self._number_label.setAccessibleDescription(
+            "The number of seconds before PiPrints takes the next photo."
+        )
         self._number_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         number_font = QFont()
         number_font.setPixelSize(240)

@@ -32,6 +32,7 @@ class LayoutSelectionScreen(QWidget):
         self._buttons: list[QPushButton] = []
 
         title = QLabel("Choose your layout")
+        title.setAccessibleName("Layout selection")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-size: 30px; font-weight: bold;")
 
@@ -42,8 +43,13 @@ class LayoutSelectionScreen(QWidget):
 
         back_button = QPushButton("Back")
         back_button.setObjectName("layoutBackButton")
+        back_button.setAccessibleName("Back to home")
+        back_button.setAccessibleDescription("Cancel layout selection and return home.")
         back_button.setMinimumSize(180, 72)
-        back_button.setStyleSheet("font-size: 24px; padding: 12px 32px;")
+        back_button.setStyleSheet(
+            "QPushButton { font-size: 24px; padding: 12px 32px; }"
+            "QPushButton:focus { border: 3px solid #1a73e8; }"
+        )
         back_button.clicked.connect(cancel)
 
         layout = QVBoxLayout(self)
@@ -63,12 +69,15 @@ class LayoutSelectionScreen(QWidget):
         """Create one large card from a descriptor, not a composition strategy."""
         button = QPushButton()
         button.setObjectName(f"layoutCard_{option.identifier}")
+        button.setAccessibleName(f"Select {option.name} layout")
+        button.setAccessibleDescription(option.description)
         button.setMinimumHeight(260)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         button.setStyleSheet(
             "QPushButton { font-size: 22px; font-weight: bold; padding: 12px; }"
             "QPushButton:pressed { background-color: #b8b8b8; }"
             "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
+            "QPushButton:focus { border: 3px solid #1a73e8; }"
         )
 
         content = QVBoxLayout(button)

@@ -36,6 +36,7 @@ class ThemeSelectionScreen(QWidget):
         self._buttons: list[QPushButton] = []
 
         title = QLabel("Choose your theme")
+        title.setAccessibleName("Theme selection")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-size: 30px; font-weight: bold;")
 
@@ -48,8 +49,15 @@ class ThemeSelectionScreen(QWidget):
 
         back_button = QPushButton("Back")
         back_button.setObjectName("themeBackButton")
+        back_button.setAccessibleName("Back to layout selection")
+        back_button.setAccessibleDescription(
+            "Return to layout selection without starting."
+        )
         back_button.setMinimumSize(180, 72)
-        back_button.setStyleSheet("font-size: 24px; padding: 12px 32px;")
+        back_button.setStyleSheet(
+            "QPushButton { font-size: 24px; padding: 12px 32px; }"
+            "QPushButton:focus { border: 3px solid #1a73e8; }"
+        )
         back_button.clicked.connect(cancel)
 
         layout = QVBoxLayout(self)
@@ -69,6 +77,8 @@ class ThemeSelectionScreen(QWidget):
         """Create one touch-sized card using only supplied metadata."""
         button = QPushButton()
         button.setObjectName(f"themeCard_{option.identifier}")
+        button.setAccessibleName(f"Select {option.name} theme")
+        button.setAccessibleDescription("Starts the session with this theme.")
         button.setMinimumSize(300, 260)
         button.setMaximumWidth(480)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -76,6 +86,7 @@ class ThemeSelectionScreen(QWidget):
             "QPushButton { font-size: 22px; font-weight: bold; padding: 12px; }"
             "QPushButton:pressed { background-color: #b8b8b8; }"
             "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
+            "QPushButton:focus { border: 3px solid #1a73e8; }"
         )
 
         content = QVBoxLayout(button)

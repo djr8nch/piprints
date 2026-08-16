@@ -142,8 +142,22 @@ class BoothScreen(QWidget):
         # Retain this alias while the existing screen tests inspect the label.
         self._countdown_label = self._countdown_presentation._number_label
         self._progress_label = QLabel()
+        self._progress_label.setAccessibleName("Capture progress")
         self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._progress_label.setStyleSheet("font-size: 22px; font-weight: bold;")
         self._take_photo_button = QPushButton("Take Photo")
+        self._take_photo_button.setObjectName("takePhotoButton")
+        self._take_photo_button.setAccessibleName("Take photo")
+        self._take_photo_button.setAccessibleDescription(
+            "Start the countdown for the next photo."
+        )
+        self._take_photo_button.setMinimumHeight(88)
+        self._take_photo_button.setStyleSheet(
+            "QPushButton { font-size: 30px; font-weight: bold; padding: 12px 36px; }"
+            "QPushButton:pressed { background-color: #b8b8b8; }"
+            "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
+            "QPushButton:focus { border: 3px solid #1a73e8; }"
+        )
         self._take_photo_button.clicked.connect(self._start_countdown)
 
         preview_content = QWidget()
@@ -160,6 +174,7 @@ class BoothScreen(QWidget):
         preview_stack.addWidget(self._countdown_presentation)
 
         self._review_label = QLabel()
+        self._review_label.setAccessibleName("Final photo preview")
         self._review_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._review_label.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
@@ -173,20 +188,52 @@ class BoothScreen(QWidget):
         self._print_status_label.setAlignment(
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
         )
-        self._save_status_label.setStyleSheet("font-size: 17px;")
-        self._print_status_label.setStyleSheet("font-size: 17px;")
+        self._save_status_label.setAccessibleName("Save status")
+        self._print_status_label.setAccessibleName("Print status")
+        self._save_status_label.setStyleSheet("font-size: 18px;")
+        self._print_status_label.setStyleSheet("font-size: 18px;")
         # Compatibility alias for existing presentation tests.
         self._review_status_label = self._print_status_label
         self._retake_button = QPushButton("Retake")
+        self._retake_button.setObjectName("retakeButton")
+        self._retake_button.setAccessibleName("Retake photos")
+        self._retake_button.setAccessibleDescription(
+            "Discard this result and return to the home screen."
+        )
         self._retake_button.clicked.connect(self._retake)
-        self._retake_button.setMinimumSize(128, 72)
+        self._retake_button.setMinimumSize(160, 76)
+        self._retake_button.setStyleSheet(
+            "QPushButton { font-size: 24px; font-weight: bold; }"
+            "QPushButton:pressed { background-color: #b8b8b8; }"
+            "QPushButton:focus { border: 3px solid #1a73e8; }"
+        )
         self._print_button = QPushButton("Print")
-        self._print_button.setMinimumSize(136, 72)
-        self._print_button.setStyleSheet("font-size: 24px; font-weight: bold;")
+        self._print_button.setObjectName("printButton")
+        self._print_button.setAccessibleName("Print final photo")
+        self._print_button.setAccessibleDescription(
+            "Send the final photo to the configured printer."
+        )
+        self._print_button.setMinimumSize(136, 76)
+        self._print_button.setStyleSheet(
+            "QPushButton { font-size: 24px; font-weight: bold; }"
+            "QPushButton:pressed { background-color: #b8b8b8; }"
+            "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
+            "QPushButton:focus { border: 3px solid #1a73e8; }"
+        )
         self._print_button.clicked.connect(self._print_review)
         self._done_button = QPushButton("Done")
-        self._done_button.setMinimumSize(220, 72)
-        self._done_button.setStyleSheet("font-size: 28px; font-weight: bold;")
+        self._done_button.setObjectName("doneButton")
+        self._done_button.setAccessibleName("Save and finish")
+        self._done_button.setAccessibleDescription(
+            "Save the final photo and return to the home screen."
+        )
+        self._done_button.setMinimumSize(220, 76)
+        self._done_button.setStyleSheet(
+            "QPushButton { font-size: 28px; font-weight: bold; }"
+            "QPushButton:pressed { background-color: #b8b8b8; }"
+            "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
+            "QPushButton:focus { border: 3px solid #1a73e8; }"
+        )
         self._done_button.clicked.connect(self._finish_review)
 
         review_actions = QWidget()

@@ -74,6 +74,7 @@ class CameraPreviewWidget(QWidget):
         self._frame_timer.timeout.connect(self._display_latest_frame)
 
         self._image_label = QLabel("Starting camera preview…")
+        self._image_label.setAccessibleName("Live camera preview")
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image_label.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored

@@ -75,12 +75,11 @@ def test_error_screen_maps_categories_without_raw_diagnostics(
     assert screen._message_label.text() == message
     assert "ttyUSB" not in screen._title_label.text()
     assert "traceback" not in screen._message_label.text()
-    assert screen._retry_button.minimumSize().toTuple() == (280, 88)
-    assert screen._return_button.minimumSize().toTuple() == (280, 88)
+    assert screen._return_button.minimumSize().toTuple() == (320, 88)
+    assert screen._return_button.accessibleName() == "Return to start"
 
-    screen._retry_button.click()
     screen._return_button.click()
-    assert recoveries == ["reset", "reset"]
+    assert recoveries == ["reset"]
     screen.close()
     application.processEvents()
 
@@ -110,7 +109,7 @@ def test_error_recovery_resets_the_controller_and_returns_home(tmp_path: Path) -
     assert window._pages.currentWidget() is window._error_screen
     assert window._error_screen._title_label.text() == "Couldn't take photo"
 
-    window._error_screen._retry_button.click()
+    window._error_screen._return_button.click()
 
     assert controller.state is BoothState.IDLE
     assert window._pages.currentWidget() is window._home_screen

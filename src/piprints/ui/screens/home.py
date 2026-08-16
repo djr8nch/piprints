@@ -21,16 +21,22 @@ class HomeScreen(QWidget):
 
         self._title_label = QLabel("PiPrints")
         self._title_label.setObjectName("homeTitle")
+        self._title_label.setAccessibleName("PiPrints home")
         self._title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._title_label.setStyleSheet("font-size: 44px; font-weight: bold;")
 
-        self._instruction_label = QLabel("Tap Start to choose your photo layout")
+        self._instruction_label = QLabel("Tap Start to choose your layout and theme")
+        self._instruction_label.setAccessibleName("Start instructions")
         self._instruction_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._instruction_label.setWordWrap(True)
         self._instruction_label.setStyleSheet("font-size: 20px;")
 
         self._start_button = QPushButton("Start")
         self._start_button.setObjectName("startButton")
+        self._start_button.setAccessibleName("Start a photo booth session")
+        self._start_button.setAccessibleDescription(
+            "Opens layout and theme selection before live preview."
+        )
         self._start_button.setMinimumSize(360, 104)
         self._start_button.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
@@ -39,6 +45,7 @@ class HomeScreen(QWidget):
             "QPushButton { font-size: 32px; font-weight: bold; padding: 16px 48px; }"
             "QPushButton:pressed { background-color: #b8b8b8; }"
             "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
+            "QPushButton:focus { border: 3px solid #1a73e8; }"
         )
         self._start_button.clicked.connect(self._request_session_start)
 

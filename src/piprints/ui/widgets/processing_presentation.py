@@ -13,6 +13,7 @@ class ProcessingPresentation(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._message_label = QLabel("Preparing your photo…")
+        self._message_label.setAccessibleName("Photo processing")
         self._message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         message_font = QFont()
         message_font.setPixelSize(38)
@@ -20,6 +21,10 @@ class ProcessingPresentation(QWidget):
         self._message_label.setFont(message_font)
 
         self._indicator = QProgressBar()
+        self._indicator.setAccessibleName("Photo processing in progress")
+        self._indicator.setAccessibleDescription(
+            "PiPrints is preparing the final photo."
+        )
         self._indicator.setRange(0, 0)
         self._indicator.setTextVisible(False)
         self._indicator.setFixedHeight(18)
@@ -33,4 +38,5 @@ class ProcessingPresentation(QWidget):
         layout.addWidget(self._indicator, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch()
 
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet("background-color: #151515; color: white;")
