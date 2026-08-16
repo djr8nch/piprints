@@ -109,6 +109,11 @@ class BoothController:
         """Return whether this booth has an application-configured printer."""
         return self._printer is not None
 
+    @property
+    def output_saved(self) -> bool:
+        """Return whether the current review output has been stored successfully."""
+        return self._saved_output_path is not None
+
     def add_event_listener(self, listener: BoothEventListener) -> None:
         """Subscribe a listener to events from this controller instance."""
         if listener not in self._listeners:
@@ -188,6 +193,7 @@ class BoothController:
             saved_path = self._photo_storage.save(photo, session_id=session.id)
         except StorageError as error:
             logger.exception("Booth session output could not be saved: %s", session.id)
+            self._publish(BoothEventType.OUTPUT_SAVE_FAILED, message=str(error))
             raise BoothStorageError("Unable to save the completed photo.") from error
         self._saved_output_path = saved_path
         self._publish(BoothEventType.OUTPUT_SAVED, output_path=saved_path)

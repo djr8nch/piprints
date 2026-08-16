@@ -120,6 +120,35 @@ def test_bridge_forwards_print_outcomes() -> None:
     assert failed == ["printer offline"]
 
 
+def test_bridge_forwards_output_save_outcomes() -> None:
+    """Save status remains a distinct application result from printing."""
+    QApplication.instance() or QApplication(["piprints"])
+    bridge = QtEventBridge()
+    saved: list[object] = []
+    failed: list[str] = []
+    bridge.output_saved.connect(saved.append)
+    bridge.output_save_failed.connect(failed.append)
+
+    output_path = Path("/runtime/photos/final.png")
+    bridge.on_booth_event(
+        BoothEvent(
+            event_type=BoothEventType.OUTPUT_SAVED,
+            state=BoothState.REVIEW,
+            output_path=output_path,
+        )
+    )
+    bridge.on_booth_event(
+        BoothEvent(
+            event_type=BoothEventType.OUTPUT_SAVE_FAILED,
+            state=BoothState.REVIEW,
+            message="storage error",
+        )
+    )
+
+    assert saved == [output_path]
+    assert failed == ["storage error"]
+
+
 def test_booth_package_does_not_depend_on_qt() -> None:
     """The framework adapter remains outside the booth/application boundary."""
     booth_directory = Path(__file__).parents[3] / "src" / "piprints" / "booth"

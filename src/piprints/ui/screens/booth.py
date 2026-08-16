@@ -22,6 +22,7 @@ from piprints.booth import (
     BoothController,
     BoothPrintError,
     BoothState,
+    BoothStorageError,
 )
 from piprints.camera import Camera
 from piprints.imaging import Photo
@@ -103,6 +104,8 @@ class _PrintWorker(QThread):
         """Request application-owned printing for the active review session."""
         try:
             self._controller.print_reviewed_output()
+        except BoothStorageError:
+            logger.exception("Booth output save failed before printing")
         except BoothPrintError as error:
             logger.exception("Booth print request failed")
             self.print_failed.emit(str(error))
@@ -129,6 +132,8 @@ class BoothScreen(QWidget):
         self._event_bridge.countdown_tick.connect(self._show_countdown_tick)
         self._event_bridge.state_changed.connect(self._present_booth_state)
         self._event_bridge.review_ready.connect(self._show_review)
+        self._event_bridge.output_saved.connect(self._show_save_success)
+        self._event_bridge.output_save_failed.connect(self._show_save_failure)
         self._event_bridge.print_completed.connect(self._show_print_success)
         self._event_bridge.print_failed.connect(self._show_print_failure)
 
@@ -160,11 +165,18 @@ class BoothScreen(QWidget):
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
         )
         self._review_label.setStyleSheet("background-color: black;")
-        self._review_status_label = QLabel("Your photo is ready")
-        self._review_status_label.setAlignment(
+        self._save_status_label = QLabel()
+        self._save_status_label.setAlignment(
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
         )
-        self._review_status_label.setStyleSheet("font-size: 20px;")
+        self._print_status_label = QLabel()
+        self._print_status_label.setAlignment(
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+        )
+        self._save_status_label.setStyleSheet("font-size: 17px;")
+        self._print_status_label.setStyleSheet("font-size: 17px;")
+        # Compatibility alias for existing presentation tests.
+        self._review_status_label = self._print_status_label
         self._retake_button = QPushButton("Retake")
         self._retake_button.clicked.connect(self._retake)
         self._retake_button.setMinimumSize(128, 72)
@@ -182,7 +194,13 @@ class BoothScreen(QWidget):
         actions_layout = QHBoxLayout(review_actions)
         actions_layout.setContentsMargins(20, 8, 20, 8)
         actions_layout.setSpacing(12)
-        actions_layout.addWidget(self._review_status_label, stretch=1)
+        review_status = QWidget()
+        status_layout = QVBoxLayout(review_status)
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(2)
+        status_layout.addWidget(self._save_status_label)
+        status_layout.addWidget(self._print_status_label)
+        actions_layout.addWidget(review_status, stretch=1)
         actions_layout.addWidget(self._retake_button)
         actions_layout.addWidget(self._print_button)
         actions_layout.addWidget(self._done_button)
@@ -317,12 +335,10 @@ class BoothScreen(QWidget):
             self._review_label.setText("Photo captured, but it could not be displayed.")
         else:
             self._review_label.setText("")
-        self._review_status_label.setText("Your photo is ready")
+        self._reset_review_status()
         self._done_button.setEnabled(True)
         self._retake_button.setEnabled(True)
         self._print_button.setEnabled(self._controller.printer_available)
-        if not self._controller.printer_available:
-            self._review_status_label.setText("Printer unavailable")
         self._pages.setCurrentIndex(1)
         self._update_review_pixmap()
 
@@ -340,7 +356,8 @@ class BoothScreen(QWidget):
         """Ask the application to persist and close the reviewed session."""
         self._done_button.setEnabled(False)
         self._retake_button.setEnabled(False)
-        self._review_status_label.setText("Saving your photo…")
+        if not self._controller.output_saved:
+            self._save_status_label.setText("Saving…")
         self._completion_worker = _CompletionWorker(self._controller)
         self._completion_worker.completion_failed.connect(self._show_completion_error)
         self._completion_worker.finished.connect(self._completion_worker_finished)
@@ -348,7 +365,7 @@ class BoothScreen(QWidget):
 
     def _show_completion_error(self, _message: str) -> None:
         """Offer a retry without exposing storage implementation details."""
-        self._review_status_label.setText("We couldn't save your photo.")
+        self._save_status_label.setText("Save failed")
         self._done_button.setEnabled(True)
         self._retake_button.setEnabled(True)
 
@@ -357,7 +374,9 @@ class BoothScreen(QWidget):
         if not self._controller.printer_available or self._print_worker is not None:
             return
         self._print_button.setEnabled(False)
-        self._review_status_label.setText("Sending to printer…")
+        if not self._controller.output_saved:
+            self._save_status_label.setText("Saving…")
+        self._print_status_label.setText("Printing…")
         self._print_worker = _PrintWorker(self._controller)
         self._print_worker.print_failed.connect(self._show_print_failure)
         self._print_worker.finished.connect(self._print_worker_finished)
@@ -365,13 +384,23 @@ class BoothScreen(QWidget):
 
     def _show_print_success(self, _result: object) -> None:
         """Confirm a completed print while retaining the finished image."""
-        self._review_status_label.setText("Saved and sent to printer")
+        self._print_status_label.setText("✓ Printed")
         self._print_button.setEnabled(False)
 
     def _show_print_failure(self, _message: str) -> None:
         """Allow a failed print to be retried without losing the review photo."""
-        self._review_status_label.setText("Unable to print. You can try again.")
+        self._print_status_label.setText("Print failed")
         self._print_button.setEnabled(self._controller.printer_available)
+
+    def _show_save_success(self, _output_path: object) -> None:
+        """Show the confirmed digital output result without exposing its path."""
+        self._save_status_label.setText("✓ Saved")
+
+    def _show_save_failure(self, _message: str) -> None:
+        """Show a recoverable save failure without technical diagnostics."""
+        self._save_status_label.setText("Save failed")
+        if self._print_status_label.text() == "Printing…":
+            self._print_status_label.clear()
 
     def _print_worker_finished(self) -> None:
         """Release the completed print worker before another request."""
@@ -393,10 +422,17 @@ class BoothScreen(QWidget):
         """Discard completed-photo pixels and controls from the prior customer."""
         self._review_pixmap = None
         self._review_label.clear()
-        self._review_status_label.setText("Your photo is ready")
+        self._reset_review_status()
         self._done_button.setEnabled(True)
         self._retake_button.setEnabled(True)
         self._print_button.setEnabled(self._controller.printer_available)
+
+    def _reset_review_status(self) -> None:
+        """Clear prior customer output feedback for a fresh review session."""
+        self._save_status_label.clear()
+        self._print_status_label.setText(
+            "" if self._controller.printer_available else "Printer unavailable"
+        )
 
     def _update_progress(self) -> None:
         """Render progress from the controller-owned capture session."""

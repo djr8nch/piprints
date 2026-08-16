@@ -37,6 +37,7 @@ class LifecycleRecorder:
         self.calls: list[str] = []
         self.session = None
         self.printer_available = False
+        self.output_saved = False
 
     def complete_session(self) -> None:
         """Record persistent completion."""
@@ -267,6 +268,8 @@ def test_print_requests_the_application_api_only_once_per_touch_sequence() -> No
     screen._print_button.click()
 
     assert not screen._print_button.isEnabled()
+    assert screen._save_status_label.text() == "Saving…"
+    assert screen._print_status_label.text() == "Printing…"
     assert screen._print_worker is not None
     assert screen._print_worker.wait(1000)
     assert controller.calls == ["print"]
@@ -298,7 +301,56 @@ def test_print_failure_keeps_review_photo_and_done_available() -> None:
     assert screen._review_pixmap is displayed_pixmap
     assert screen._done_button.isEnabled()
     assert screen._print_button.isEnabled()
-    assert screen._review_status_label.text() == "Unable to print. You can try again."
+    assert screen._review_status_label.text() == "Print failed"
 
+    screen.close()
+    application.processEvents()
+
+
+def test_review_footer_keeps_save_and_print_statuses_independent() -> None:
+    """A print failure explicitly retains the confirmed digital save result."""
+    application = QApplication.instance() or QApplication(["piprints"])
+    controller = PrintLifecycleRecorder()
+    event_bridge = QtEventBridge()
+    screen = BoothScreen(FakeCamera(), controller, event_bridge)  # type: ignore[arg-type]
+    screen.resize(800, 480)
+    screen.show()
+    screen._show_review(Photo(Image.new("RGB", (20, 10), "blue")))
+
+    screen._print_status_label.setText("Printing…")
+    event_bridge.on_booth_event(
+        BoothEvent(
+            event_type=BoothEventType.OUTPUT_SAVE_FAILED,
+            state=BoothState.REVIEW,
+            message="storage unavailable",
+        )
+    )
+    assert screen._save_status_label.text() == "Save failed"
+    assert screen._print_status_label.text() == ""
+
+    event_bridge.on_booth_event(
+        BoothEvent(
+            event_type=BoothEventType.OUTPUT_SAVED,
+            state=BoothState.REVIEW,
+            output_path=Path("/runtime/photos/final.png"),
+        )
+    )
+    event_bridge.on_booth_event(
+        BoothEvent(
+            event_type=BoothEventType.PRINT_FAILED,
+            state=BoothState.REVIEW,
+            message="printer offline",
+        )
+    )
+
+    assert screen._save_status_label.text() == "✓ Saved"
+    assert screen._print_status_label.text() == "Print failed"
+    assert screen._done_button.isEnabled()
+    assert screen._print_button.isEnabled()
+    assert screen._review_label.height() > screen.height() // 2
+
+    screen.reset_presentation()
+    assert screen._save_status_label.text() == ""
+    assert screen._print_status_label.text() == ""
     screen.close()
     application.processEvents()

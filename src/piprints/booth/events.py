@@ -22,6 +22,7 @@ class BoothEventType(Enum):
     PHOTO_CAPTURED = auto()
     REVIEW_READY = auto()
     OUTPUT_SAVED = auto()
+    OUTPUT_SAVE_FAILED = auto()
     PRINT_COMPLETED = auto()
     PRINT_FAILED = auto()
     SESSION_COMPLETED = auto()

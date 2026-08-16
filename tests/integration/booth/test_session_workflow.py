@@ -14,13 +14,14 @@ from piprints.booth import (
     BoothPrintError,
     BoothState,
     BoothStateError,
+    BoothStorageError,
     Countdown,
 )
 from piprints.imaging import PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import SinglePhotoLayout
 from piprints.imaging.operations import ResizeOperation
 from piprints.printing import Printer, PrintResult
-from piprints.storage import FilesystemPhotoStorage
+from piprints.storage import FilesystemPhotoStorage, PhotoStorage, StorageError
 from tests.fakes import FakeCamera, FakePrinter
 
 
@@ -35,11 +36,20 @@ class RecordingListener:
         self.events.append(event)
 
 
+class FailingStorage:
+    """Deterministically fail persistence for output-status coverage."""
+
+    def save(self, *_: object, **__: object) -> Path:
+        """Raise the PiPrints storage boundary exception."""
+        raise StorageError("storage unavailable")
+
+
 def make_controller(
     camera: FakeCamera,
     capture_directory: Path,
     listener: RecordingListener,
     printer: Printer | None = None,
+    photo_storage: PhotoStorage | None = None,
 ) -> BoothController:
     """Compose the real application collaborators around a fake camera."""
     return BoothController(
@@ -48,7 +58,8 @@ def make_controller(
         photo_loader=PhotoLoader(),
         photo_pipeline=PhotoPipeline([ResizeOperation(4, 6)]),
         layout=SinglePhotoLayout(),
-        photo_storage=FilesystemPhotoStorage(capture_directory.parent / "photos"),
+        photo_storage=photo_storage
+        or FilesystemPhotoStorage(capture_directory.parent / "photos"),
         printer=printer,
         countdown=Countdown(3, delay=lambda _: None),
         listeners=[listener],
@@ -187,6 +198,33 @@ def test_printer_failure_preserves_saved_output_and_review_state(
     assert controller.state is BoothState.REVIEW
     assert printer.print_requests == (final_photo,)
     assert len(list((tmp_path / "photos").glob("*/*.png"))) == 1
+
+
+def test_save_failure_emits_a_recoverable_output_event(tmp_path: Path) -> None:
+    """A save failure reports status while retaining the reviewed final layout."""
+    listener = RecordingListener()
+    controller = make_controller(
+        FakeCamera(),
+        tmp_path / "captures",
+        listener,
+        photo_storage=FailingStorage(),
+    )
+
+    controller.start_countdown()
+    controller.run_countdown()
+    final_photo = controller.capture()
+
+    with pytest.raises(BoothStorageError, match="Unable to save the completed photo"):
+        controller.complete_session()
+
+    save_failure = next(
+        event
+        for event in listener.events
+        if event.event_type is BoothEventType.OUTPUT_SAVE_FAILED
+    )
+    assert controller.state is BoothState.REVIEW
+    assert controller.last_capture is final_photo
+    assert save_failure.message == "storage unavailable"
 
 
 def test_camera_failure_enters_error_then_resets_cleanly(tmp_path: Path) -> None:
