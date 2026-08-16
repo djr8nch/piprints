@@ -9,6 +9,7 @@ from piprints.booth.controller import (
 )
 from piprints.booth.countdown import Countdown
 from piprints.booth.events import BoothEvent, BoothEventListener, BoothEventType
+from piprints.booth.layout_selection import LayoutCatalog, LayoutOption
 from piprints.booth.session import BoothSession, BoothSessionError
 from piprints.booth.state import BoothState
 
@@ -19,6 +20,8 @@ __all__ = [
     "BoothEvent",
     "BoothEventListener",
     "BoothEventType",
+    "LayoutCatalog",
+    "LayoutOption",
     "BoothSession",
     "BoothSessionError",
     "BoothState",

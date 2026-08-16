@@ -11,8 +11,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from piprints.booth import BoothController, BoothState, Countdown
+from piprints.bootstrap import create_layout_catalog
 from piprints.imaging import PhotoLoader, PhotoPipeline
-from piprints.imaging.layouts import SinglePhotoLayout
+from piprints.imaging.layouts import FourPhotoLayout
 from piprints.storage import FilesystemPhotoStorage
 from piprints.ui import QtEventBridge
 from piprints.ui.screens.home import HomeScreen
@@ -27,9 +28,10 @@ def make_controller(capture_directory: Path) -> BoothController:
         capture_directory=capture_directory,
         photo_loader=PhotoLoader(),
         photo_pipeline=PhotoPipeline(),
-        layout=SinglePhotoLayout(),
+        layout=FourPhotoLayout(),
         photo_storage=FilesystemPhotoStorage(capture_directory.parent / "photos"),
         countdown=Countdown(3, delay=lambda _: None),
+        layout_catalog=create_layout_catalog(),
     )
 
 
@@ -60,10 +62,10 @@ def test_idle_window_displays_a_touch_sized_home_screen_at_800_by_480(
     application.processEvents()
 
 
-def test_start_forwards_one_request_and_state_transition_navigates_away(
+def test_start_opens_layout_selection_once(
     tmp_path: Path,
 ) -> None:
-    """Repeated taps cannot create more than the controller's one active session."""
+    """Repeated home taps cannot create a session before layout selection."""
     application = QApplication.instance() or QApplication(["piprints"])
     controller = make_controller(tmp_path / "captures")
     event_bridge = QtEventBridge()
@@ -71,12 +73,11 @@ def test_start_forwards_one_request_and_state_transition_navigates_away(
     window = MainWindow(FakeCamera(), controller, event_bridge)
 
     window._home_screen._start_button.click()
-    session = controller.session
     window._home_screen._start_button.click()
 
-    assert controller.state is BoothState.PREPARING
-    assert controller.session is session
-    assert window._pages.currentWidget() is window._booth_screen
+    assert controller.state is BoothState.IDLE
+    assert controller.session is None
+    assert window._pages.currentWidget() is window._layout_selection_screen
     assert not window._home_screen._start_button.isEnabled()
 
     window.close()
@@ -92,6 +93,7 @@ def test_returning_to_idle_restores_a_clean_home_presentation(tmp_path: Path) ->
     window = MainWindow(FakeCamera(), controller, event_bridge)
 
     window._home_screen._start_button.click()
+    window._layout_selection_screen._buttons[0].click()
     controller.start_countdown()
     controller.run_countdown()
     controller.capture()

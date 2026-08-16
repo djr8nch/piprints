@@ -9,6 +9,7 @@ from pathlib import Path
 
 from piprints.booth.countdown import Countdown
 from piprints.booth.events import BoothEvent, BoothEventListener, BoothEventType
+from piprints.booth.layout_selection import LayoutCatalog, LayoutOption
 from piprints.booth.session import BoothSession
 from piprints.booth.state import BoothState
 from piprints.camera import Camera
@@ -64,11 +65,13 @@ class BoothController:
         countdown_duration_seconds: int = 3,
         countdown: Countdown | None = None,
         listeners: Iterable[BoothEventListener] = (),
+        layout_catalog: LayoutCatalog | None = None,
     ) -> None:
         self._camera = camera
         self._capture_directory = capture_directory
         self._photo_loader = photo_loader
         self._photo_pipeline = photo_pipeline
+        self._layout_catalog = layout_catalog or self._catalog_for_layout(layout)
         self._layout = layout
         self._photo_storage = photo_storage
         self._printer = printer
@@ -95,6 +98,11 @@ class BoothController:
         """Return the active capture session, if one has been started."""
         return self._session
 
+    @property
+    def available_layouts(self) -> tuple[LayoutOption, ...]:
+        """Return application-level descriptors for layouts users may select."""
+        return self._layout_catalog.options
+
     def add_event_listener(self, listener: BoothEventListener) -> None:
         """Subscribe a listener to events from this controller instance."""
         if listener not in self._listeners:
@@ -105,12 +113,22 @@ class BoothController:
         if listener in self._listeners:
             self._listeners.remove(listener)
 
-    def begin_session(self) -> BoothSession:
+    def begin_session(self, layout_identifier: str | None = None) -> BoothSession:
         """Create the active session and enter its preparation phase."""
         self._require_state(BoothState.IDLE)
         if self._session is not None:
             raise BoothStateError("Cannot begin a session while one is active.")
-        self._session = BoothSession(self._layout.required_photos)
+        selected_identifier = (
+            layout_identifier or self._layout_catalog.default_identifier
+        )
+        try:
+            self._layout = self._layout_catalog.create(selected_identifier)
+        except ValueError as error:
+            raise BoothStateError(str(error)) from error
+        self._session = BoothSession(
+            self._layout.required_photos,
+            layout_identifier=selected_identifier,
+        )
         self._saved_output_path = None
         self._publish(BoothEventType.SESSION_STARTED)
         self._transition_to(BoothState.PREPARING)
@@ -334,3 +352,16 @@ class BoothController:
         if self._session is None:
             raise BoothStateError("Capture requires an active capture session.")
         return self._session
+
+    @staticmethod
+    def _catalog_for_layout(layout: Layout) -> LayoutCatalog:
+        """Adapt legacy single-layout construction to the selection boundary."""
+        option = LayoutOption(
+            identifier="default",
+            name="Photo Layout",
+            description=f"{layout.required_photos} photo session",
+            required_photos=layout.required_photos,
+            preview_columns=1,
+            preview_rows=1,
+        )
+        return LayoutCatalog((option,), {option.identifier: lambda: layout})

@@ -15,16 +15,16 @@ class HomeScreen(QWidget):
     or hardware dependency. This keeps it limited to presenting intent.
     """
 
-    def __init__(self, begin_session: Callable[[], object]) -> None:
+    def __init__(self, show_layout_selection: Callable[[], None]) -> None:
         super().__init__()
-        self._begin_session = begin_session
+        self._show_layout_selection = show_layout_selection
 
         self._title_label = QLabel("PiPrints")
         self._title_label.setObjectName("homeTitle")
         self._title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._title_label.setStyleSheet("font-size: 44px; font-weight: bold;")
 
-        self._instruction_label = QLabel("Tap Start to begin your photo session")
+        self._instruction_label = QLabel("Tap Start to choose your photo layout")
         self._instruction_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._instruction_label.setWordWrap(True)
         self._instruction_label.setStyleSheet("font-size: 20px;")
@@ -58,6 +58,6 @@ class HomeScreen(QWidget):
         self._start_button.clearFocus()
 
     def _request_session_start(self) -> None:
-        """Forward a single start request to the application boundary."""
+        """Open layout selection through the presentation flow."""
         self._start_button.setEnabled(False)
-        self._begin_session()
+        self._show_layout_selection()

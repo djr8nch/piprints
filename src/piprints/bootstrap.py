@@ -8,10 +8,19 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-from piprints.booth import BoothController, BoothEventListener
+from piprints.booth import (
+    BoothController,
+    BoothEventListener,
+    LayoutCatalog,
+    LayoutOption,
+)
 from piprints.camera import Camera, PiCamera
 from piprints.imaging import PhotoLoader, PhotoPipeline
-from piprints.imaging.layouts import FourPhotoLayout
+from piprints.imaging.layouts import (
+    ClassicPhotoStripLayout,
+    FourPhotoLayout,
+    SinglePhotoLayout,
+)
 from piprints.printing import Printer
 from piprints.storage import FilesystemPhotoStorage, PhotoStorage
 from piprints.ui import QtEventBridge
@@ -38,6 +47,23 @@ def create_photo_storage(output_directory: Path | None = None) -> PhotoStorage:
     return FilesystemPhotoStorage(output_directory or Path.cwd() / "photos")
 
 
+def create_layout_catalog() -> LayoutCatalog:
+    """Create the currently supported user-selectable layout catalog."""
+    options = (
+        LayoutOption("single", "Single Photo", "1 photo", 1, 1, 1),
+        LayoutOption("grid", "Four Photo Grid", "4 photos", 4, 2, 2),
+        LayoutOption("strip", "Classic Strip", "4 photos", 4, 1, 4),
+    )
+    return LayoutCatalog(
+        options,
+        {
+            "single": SinglePhotoLayout,
+            "grid": FourPhotoLayout,
+            "strip": ClassicPhotoStripLayout,
+        },
+    )
+
+
 def create_booth(
     camera: Camera,
     capture_directory: Path | None = None,
@@ -53,6 +79,7 @@ def create_booth(
         photo_loader=PhotoLoader(),
         photo_pipeline=PhotoPipeline(),
         layout=FourPhotoLayout(),
+        layout_catalog=create_layout_catalog(),
         photo_storage=photo_storage or create_photo_storage(),
         printer=printer,
         listeners=listeners,

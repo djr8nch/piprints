@@ -21,7 +21,10 @@ class BoothSession:
     """
 
     def __init__(
-        self, target_photo_count: int = 1, session_id: UUID | None = None
+        self,
+        target_photo_count: int = 1,
+        session_id: UUID | None = None,
+        layout_identifier: str | None = None,
     ) -> None:
         if (
             isinstance(target_photo_count, bool)
@@ -31,8 +34,11 @@ class BoothSession:
             raise BoothSessionError("Target photo count must be a positive integer.")
         if session_id is not None and not isinstance(session_id, UUID):
             raise BoothSessionError("Session ID must be a UUID.")
+        if layout_identifier is not None and not layout_identifier:
+            raise BoothSessionError("Layout identifier cannot be empty.")
         self._id = session_id or uuid4()
         self._target_photo_count = target_photo_count
+        self._layout_identifier = layout_identifier
         self._captured_photos: list[Photo] = []
         self._final_photo: Photo | None = None
 
@@ -50,6 +56,11 @@ class BoothSession:
     def target_photo_count(self) -> int:
         """Return the layout-derived number of captures required by this session."""
         return self._target_photo_count
+
+    @property
+    def layout_identifier(self) -> str | None:
+        """Return the application-selected layout for this session."""
+        return self._layout_identifier
 
     @property
     def photo_count(self) -> int:

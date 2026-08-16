@@ -16,6 +16,8 @@ from piprints.booth import (
     BoothState,
     BoothStateError,
     Countdown,
+    LayoutCatalog,
+    LayoutOption,
 )
 from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import Layout, SinglePhotoLayout
@@ -68,6 +70,30 @@ def test_begin_session_creates_the_active_session_and_prepares_the_booth(
     assert controller.session is session
     assert session.target_photo_count == 1
     assert controller.state is BoothState.PREPARING
+
+
+def test_begin_session_records_a_catalog_selected_layout(tmp_path: Path) -> None:
+    """The selected descriptor controls both session identity and photo target."""
+    camera = FakeCamera()
+    catalog = LayoutCatalog(
+        (LayoutOption("two", "Two Photos", "2 photos", 2, 2, 1),),
+        {"two": TwoPhotoRecordingLayout},
+    )
+    controller = BoothController(
+        camera=camera,
+        capture_directory=tmp_path / "captures",
+        photo_loader=PhotoLoader(),
+        photo_pipeline=PhotoPipeline(),
+        layout=SinglePhotoLayout(),
+        layout_catalog=catalog,
+        photo_storage=FilesystemPhotoStorage(tmp_path / "photos"),
+        countdown=Countdown(3, delay=lambda _: None),
+    )
+
+    session = controller.begin_session("two")
+
+    assert session.layout_identifier == "two"
+    assert session.target_photo_count == 2
 
 
 def test_cannot_begin_a_second_active_session(tmp_path: Path) -> None:

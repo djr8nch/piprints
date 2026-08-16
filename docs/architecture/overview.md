@@ -35,9 +35,13 @@ hardware, UI, layout, or persistence behavior.
 continuous autofocus for Camera Module 3, supplies standard `PreviewFrame`
 values for live preview, and switches to a still configuration for capture.
 
-The UI uses PySide6. `BoothScreen` renders the countdown, review, and retake
-controls. `CameraPreviewWidget` obtains `PreviewFrame` values on a worker
-thread, retains only the latest frame, and paints it from a Qt timer. The still
+The UI uses PySide6. The IDLE home screen leads to a layout-selection screen,
+which renders only `LayoutCatalog` descriptors and asks `BoothController` to
+begin a session with the selected identifier. This keeps concrete composition
+strategies in the application/bootstrap boundary rather than the UI.
+`BoothScreen` renders the countdown, review, and retake controls.
+`CameraPreviewWidget` obtains `PreviewFrame` values on a worker thread,
+retains only the latest frame, and paints it from a Qt timer. The still
 capture is also performed by a short-lived Qt worker so the UI thread remains
 responsive.
 
@@ -192,7 +196,8 @@ session completes.
 
 ```mermaid
 flowchart LR
-    Idle["Idle: live preview"] -->|Begin session| Preparing["Preparing"]
+    Idle["Idle: Home"] -->|Start| LayoutSelection["Layout Selection"]
+    LayoutSelection -->|Choose layout| Preparing["Preparing"]
     Preparing -->|Take Photo| Countdown["Countdown: 3, 2, 1"]
     Countdown --> Capturing["Capturing: still image"]
     Capturing -->|session incomplete| Preparing
