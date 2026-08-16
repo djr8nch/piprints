@@ -16,6 +16,7 @@ from piprints.booth import (
     BoothController,
     BoothEvent,
     BoothEventType,
+    BoothPrintError,
     BoothState,
     Countdown,
 )
@@ -35,6 +36,7 @@ class LifecycleRecorder:
     def __init__(self) -> None:
         self.calls: list[str] = []
         self.session = None
+        self.printer_available = False
 
     def complete_session(self) -> None:
         """Record persistent completion."""
@@ -43,6 +45,27 @@ class LifecycleRecorder:
     def finish_session(self) -> None:
         """Record return to the idle lifecycle boundary."""
         self.calls.append("finish")
+
+
+class PrintLifecycleRecorder(LifecycleRecorder):
+    """Record one printer request made by the review presentation."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.printer_available = True
+
+    def print_reviewed_output(self) -> None:
+        """Record application-owned printing without hardware dependencies."""
+        self.calls.append("print")
+
+
+class FailingPrintLifecycleRecorder(PrintLifecycleRecorder):
+    """Fail a print request while keeping the displayed review result intact."""
+
+    def print_reviewed_output(self) -> None:
+        """Raise the same application exception used for printer failures."""
+        self.calls.append("print")
+        raise BoothPrintError("Printer unavailable.")
 
 
 def make_controller(capture_directory: Path) -> BoothController:
@@ -193,6 +216,8 @@ def test_review_displays_the_final_layout_with_preserved_aspect_ratio(
     assert screen._review_label.height() > screen.height() // 2
     assert screen._done_button.minimumWidth() >= 220
     assert screen._done_button.minimumHeight() >= 72
+    assert not screen._print_button.isEnabled()
+    assert screen._review_status_label.text() == "Printer unavailable"
 
     event_bridge.on_booth_event(
         BoothEvent(
@@ -223,6 +248,57 @@ def test_done_requests_the_controller_completion_lifecycle() -> None:
     assert screen._completion_worker is not None
     assert screen._completion_worker.wait(1000)
     assert controller.calls == ["complete", "finish"]
+
+    screen.close()
+    application.processEvents()
+
+
+def test_print_requests_the_application_api_only_once_per_touch_sequence() -> None:
+    """Rapid taps disable the action before a second worker can be requested."""
+    application = QApplication.instance() or QApplication(["piprints"])
+    controller = PrintLifecycleRecorder()
+    event_bridge = QtEventBridge()
+    screen = BoothScreen(FakeCamera(), controller, event_bridge)  # type: ignore[arg-type]
+    screen.resize(800, 480)
+    screen.show()
+    screen._show_review(Photo(Image.new("RGB", (2, 2), "blue")))
+
+    screen._print_button.click()
+    screen._print_button.click()
+
+    assert not screen._print_button.isEnabled()
+    assert screen._print_worker is not None
+    assert screen._print_worker.wait(1000)
+    assert controller.calls == ["print"]
+    assert "PrimuzThermalPrinter" not in getsource(BoothScreen)
+    assert "SerialTransport" not in getsource(BoothScreen)
+    assert screen._print_button.minimumWidth() >= 136
+    assert screen._print_button.minimumHeight() >= 72
+
+    screen.close()
+    application.processEvents()
+
+
+def test_print_failure_keeps_review_photo_and_done_available() -> None:
+    """A failed print is recoverable without removing the completed layout."""
+    application = QApplication.instance() or QApplication(["piprints"])
+    controller = FailingPrintLifecycleRecorder()
+    event_bridge = QtEventBridge()
+    screen = BoothScreen(FakeCamera(), controller, event_bridge)  # type: ignore[arg-type]
+    final_layout = Photo(Image.new("RGB", (20, 10), "blue"))
+    screen._show_review(final_layout)
+    displayed_pixmap = screen._review_pixmap
+
+    screen._print_button.click()
+    assert screen._print_worker is not None
+    assert screen._print_worker.wait(1000)
+    application.processEvents()
+
+    assert controller.calls == ["print"]
+    assert screen._review_pixmap is displayed_pixmap
+    assert screen._done_button.isEnabled()
+    assert screen._print_button.isEnabled()
+    assert screen._review_status_label.text() == "Unable to print. You can try again."
 
     screen.close()
     application.processEvents()

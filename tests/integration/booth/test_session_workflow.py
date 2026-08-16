@@ -13,6 +13,7 @@ from piprints.booth import (
     BoothEventType,
     BoothPrintError,
     BoothState,
+    BoothStateError,
     Countdown,
 )
 from piprints.imaging import PhotoLoader, PhotoPipeline
@@ -112,7 +113,7 @@ def test_single_photo_session_runs_from_idle_through_completion_and_reset(
     ]
 
 
-def test_completed_session_saves_then_prints_the_final_photo(tmp_path: Path) -> None:
+def test_explicit_print_saves_then_prints_the_final_photo(tmp_path: Path) -> None:
     """A configured printer receives the final layout after digital saving."""
     listener = RecordingListener()
     printer = FakePrinter()
@@ -123,10 +124,10 @@ def test_completed_session_saves_then_prints_the_final_photo(tmp_path: Path) -> 
     controller.start_countdown()
     controller.run_countdown()
     final_photo = controller.capture()
-    controller.complete_session()
+    controller.print_reviewed_output()
 
     assert final_photo is not None
-    assert controller.state is BoothState.COMPLETE
+    assert controller.state is BoothState.REVIEW
     assert printer.print_requests == (final_photo,)
     output_saved_event = next(
         event
@@ -141,6 +142,8 @@ def test_completed_session_saves_then_prints_the_final_photo(tmp_path: Path) -> 
     assert output_saved_event.output_path is not None
     assert output_saved_event.output_path.exists()
     assert print_completed_event.print_result == PrintResult(job_id="fake-print-1")
+    with pytest.raises(BoothStateError, match="already been printed"):
+        controller.print_reviewed_output()
 
 
 def test_printer_failure_preserves_saved_output_and_review_state(
@@ -158,7 +161,7 @@ def test_printer_failure_preserves_saved_output_and_review_state(
     final_photo = controller.capture()
 
     with pytest.raises(BoothPrintError) as error_info:
-        controller.complete_session()
+        controller.print_reviewed_output()
 
     output_saved_event = next(
         event
@@ -179,9 +182,9 @@ def test_printer_failure_preserves_saved_output_and_review_state(
     assert printer.print_requests == ()
 
     printer.fail = False
-    controller.complete_session()
+    controller.print_reviewed_output()
 
-    assert controller.state is BoothState.COMPLETE
+    assert controller.state is BoothState.REVIEW
     assert printer.print_requests == (final_photo,)
     assert len(list((tmp_path / "photos").glob("*/*.png"))) == 1
 

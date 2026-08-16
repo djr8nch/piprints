@@ -18,6 +18,8 @@ class QtEventBridge(QObject):
 
     state_changed = Signal(object, object)
     countdown_tick = Signal(int)
+    print_completed = Signal(object)
+    print_failed = Signal(str)
     review_ready = Signal(object)
     error_occurred = Signal(str)
 
@@ -30,6 +32,11 @@ class QtEventBridge(QObject):
             case BoothEventType.COUNTDOWN_TICK:
                 if event.countdown_value is not None:
                     self.countdown_tick.emit(event.countdown_value)
+            case BoothEventType.PRINT_COMPLETED:
+                if event.print_result is not None:
+                    self.print_completed.emit(event.print_result)
+            case BoothEventType.PRINT_FAILED:
+                self.print_failed.emit(event.message or "Unable to print the photo.")
             case BoothEventType.REVIEW_READY:
                 if event.photo is not None:
                     self.review_ready.emit(event.photo)

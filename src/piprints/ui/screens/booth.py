@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from piprints.booth import (
     BoothCaptureError,
     BoothController,
+    BoothPrintError,
     BoothState,
 )
 from piprints.camera import Camera
@@ -89,6 +90,24 @@ class _CompletionWorker(QThread):
             self.completion_failed.emit(str(error))
 
 
+class _PrintWorker(QThread):
+    """Submit the already-composed review photo without blocking Qt."""
+
+    print_failed = Signal(str)
+
+    def __init__(self, controller: BoothController) -> None:
+        super().__init__()
+        self._controller = controller
+
+    def run(self) -> None:
+        """Request application-owned printing for the active review session."""
+        try:
+            self._controller.print_reviewed_output()
+        except BoothPrintError as error:
+            logger.exception("Booth print request failed")
+            self.print_failed.emit(str(error))
+
+
 class BoothScreen(QWidget):
     """Render session workflow state and forward intent to the controller."""
 
@@ -103,12 +122,15 @@ class BoothScreen(QWidget):
         self._capture_worker: _CaptureWorker | None = None
         self._countdown_worker: _CountdownWorker | None = None
         self._completion_worker: _CompletionWorker | None = None
+        self._print_worker: _PrintWorker | None = None
         self._review_pixmap: QPixmap | None = None
         self._is_stopping = False
         self._event_bridge = event_bridge
         self._event_bridge.countdown_tick.connect(self._show_countdown_tick)
         self._event_bridge.state_changed.connect(self._present_booth_state)
         self._event_bridge.review_ready.connect(self._show_review)
+        self._event_bridge.print_completed.connect(self._show_print_success)
+        self._event_bridge.print_failed.connect(self._show_print_failure)
 
         self._preview = CameraPreviewWidget(camera)
         self._countdown_presentation = CountdownPresentation()
@@ -146,6 +168,10 @@ class BoothScreen(QWidget):
         self._retake_button = QPushButton("Retake")
         self._retake_button.clicked.connect(self._retake)
         self._retake_button.setMinimumSize(128, 72)
+        self._print_button = QPushButton("Print")
+        self._print_button.setMinimumSize(136, 72)
+        self._print_button.setStyleSheet("font-size: 24px; font-weight: bold;")
+        self._print_button.clicked.connect(self._print_review)
         self._done_button = QPushButton("Done")
         self._done_button.setMinimumSize(220, 72)
         self._done_button.setStyleSheet("font-size: 28px; font-weight: bold;")
@@ -158,6 +184,7 @@ class BoothScreen(QWidget):
         actions_layout.setSpacing(12)
         actions_layout.addWidget(self._review_status_label, stretch=1)
         actions_layout.addWidget(self._retake_button)
+        actions_layout.addWidget(self._print_button)
         actions_layout.addWidget(self._done_button)
 
         review_page = QWidget()
@@ -201,6 +228,9 @@ class BoothScreen(QWidget):
                 logger.warning(
                     "Booth completion worker did not stop within five seconds"
                 )
+        if self._print_worker is not None and self._print_worker.isRunning():
+            if not self._print_worker.wait(5000):
+                logger.warning("Booth print worker did not stop within five seconds")
 
     def reset_presentation(self) -> None:
         """Clear session-specific presentation before the next idle screen."""
@@ -290,6 +320,9 @@ class BoothScreen(QWidget):
         self._review_status_label.setText("Your photo is ready")
         self._done_button.setEnabled(True)
         self._retake_button.setEnabled(True)
+        self._print_button.setEnabled(self._controller.printer_available)
+        if not self._controller.printer_available:
+            self._review_status_label.setText("Printer unavailable")
         self._pages.setCurrentIndex(1)
         self._update_review_pixmap()
 
@@ -319,6 +352,33 @@ class BoothScreen(QWidget):
         self._done_button.setEnabled(True)
         self._retake_button.setEnabled(True)
 
+    def _print_review(self) -> None:
+        """Request one application-owned print without reprocessing the photo."""
+        if not self._controller.printer_available or self._print_worker is not None:
+            return
+        self._print_button.setEnabled(False)
+        self._review_status_label.setText("Sending to printer…")
+        self._print_worker = _PrintWorker(self._controller)
+        self._print_worker.print_failed.connect(self._show_print_failure)
+        self._print_worker.finished.connect(self._print_worker_finished)
+        self._print_worker.start()
+
+    def _show_print_success(self, _result: object) -> None:
+        """Confirm a completed print while retaining the finished image."""
+        self._review_status_label.setText("Saved and sent to printer")
+        self._print_button.setEnabled(False)
+
+    def _show_print_failure(self, _message: str) -> None:
+        """Allow a failed print to be retried without losing the review photo."""
+        self._review_status_label.setText("Unable to print. You can try again.")
+        self._print_button.setEnabled(self._controller.printer_available)
+
+    def _print_worker_finished(self) -> None:
+        """Release the completed print worker before another request."""
+        if self._print_worker is not None:
+            self._print_worker.deleteLater()
+            self._print_worker = None
+
     def _completion_worker_finished(self) -> None:
         """Release the completed session worker."""
         if self._completion_worker is not None:
@@ -336,6 +396,7 @@ class BoothScreen(QWidget):
         self._review_status_label.setText("Your photo is ready")
         self._done_button.setEnabled(True)
         self._retake_button.setEnabled(True)
+        self._print_button.setEnabled(self._controller.printer_available)
 
     def _update_progress(self) -> None:
         """Render progress from the controller-owned capture session."""

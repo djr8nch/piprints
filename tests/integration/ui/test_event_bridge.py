@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication
 
 from piprints.booth import BoothEvent, BoothEventType, BoothState
 from piprints.imaging import Photo
+from piprints.printing import PrintResult
 from piprints.ui import QtEventBridge
 
 
@@ -88,6 +89,35 @@ def test_bridge_preserves_review_ready_photo() -> None:
     )
 
     assert received == [photo]
+
+
+def test_bridge_forwards_print_outcomes() -> None:
+    """Print status remains an application event at the Qt boundary."""
+    QApplication.instance() or QApplication(["piprints"])
+    bridge = QtEventBridge()
+    completed: list[PrintResult] = []
+    failed: list[str] = []
+    bridge.print_completed.connect(completed.append)
+    bridge.print_failed.connect(failed.append)
+
+    result = PrintResult(job_id="test-print")
+    bridge.on_booth_event(
+        BoothEvent(
+            event_type=BoothEventType.PRINT_COMPLETED,
+            state=BoothState.REVIEW,
+            print_result=result,
+        )
+    )
+    bridge.on_booth_event(
+        BoothEvent(
+            event_type=BoothEventType.PRINT_FAILED,
+            state=BoothState.REVIEW,
+            message="printer offline",
+        )
+    )
+
+    assert completed == [result]
+    assert failed == ["printer offline"]
 
 
 def test_booth_package_does_not_depend_on_qt() -> None:

@@ -78,6 +78,7 @@ class BoothController:
         self._state = BoothState.IDLE
         self._session: BoothSession | None = None
         self._saved_output_path: Path | None = None
+        self._print_completed = False
         self._countdown = countdown or Countdown(countdown_duration_seconds)
         self._listeners: list[BoothEventListener] = []
         for listener in listeners:
@@ -102,6 +103,11 @@ class BoothController:
     def available_layouts(self) -> tuple[LayoutOption, ...]:
         """Return application-level descriptors for layouts users may select."""
         return self._layout_catalog.options
+
+    @property
+    def printer_available(self) -> bool:
+        """Return whether this booth has an application-configured printer."""
+        return self._printer is not None
 
     def add_event_listener(self, listener: BoothEventListener) -> None:
         """Subscribe a listener to events from this controller instance."""
@@ -130,18 +136,18 @@ class BoothController:
             layout_identifier=selected_identifier,
         )
         self._saved_output_path = None
+        self._print_completed = False
         self._publish(BoothEventType.SESSION_STARTED)
         self._transition_to(BoothState.PREPARING)
         logger.info("Booth session started: %s", self._session.id)
         return self._session
 
     def complete_session(self) -> None:
-        """Persist and optionally print the reviewed output, then complete it.
+        """Persist the reviewed output, then mark the session complete.
 
         A persistence failure leaves the session in review so the caller can
-        report the failure and retry without recapturing the photos. A printer
-        failure also leaves the session in review, retaining its saved output
-        so a retry does not save a duplicate file.
+        report the failure and retry without recapturing the photos. Printing
+        is an explicit review action through :meth:`print_reviewed_output`.
         """
         self._require_state(BoothState.REVIEW)
         session = self._require_session()
@@ -149,11 +155,30 @@ class BoothController:
         if final_photo is None:
             raise BoothStateError("A reviewed session requires a final photo.")
         saved_path = self._save_output(session, final_photo)
-        if self._printer is not None:
-            self._print_output(session, final_photo)
         self._transition_to(BoothState.COMPLETE)
         self._publish(BoothEventType.SESSION_COMPLETED)
         logger.info("Booth session completed: %s saved to %s", session.id, saved_path)
+
+    def print_reviewed_output(self) -> PrintResult:
+        """Save once and submit the final reviewed layout to the printer.
+
+        A successful request is limited to one print per review session to
+        protect against repeated touch input. Failures retain both the review
+        state and saved digital output so the user can retry or finish.
+        """
+        self._require_state(BoothState.REVIEW)
+        if self._printer is None:
+            raise BoothPrintError("No printer is configured for this booth.")
+        if self._print_completed:
+            raise BoothStateError("The reviewed photo has already been printed.")
+        session = self._require_session()
+        final_photo = session.final_photo
+        if final_photo is None:
+            raise BoothStateError("A reviewed session requires a final photo.")
+        self._save_output(session, final_photo)
+        print_result = self._print_output(session, final_photo)
+        self._print_completed = True
+        return print_result
 
     def _save_output(self, session: BoothSession, photo: Photo) -> Path:
         """Persist the final photo once and return its saved location."""
@@ -189,6 +214,7 @@ class BoothController:
         session = self._require_session()
         self._session = None
         self._saved_output_path = None
+        self._print_completed = False
         self._transition_to(BoothState.IDLE)
         logger.info("Booth session finished: %s", session.id)
 
@@ -281,6 +307,7 @@ class BoothController:
         self._require_state(BoothState.REVIEW)
         self._session = None
         self._saved_output_path = None
+        self._print_completed = False
         self._transition_to(BoothState.IDLE)
         logger.info("Booth returned to preview for a retake")
 
