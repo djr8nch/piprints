@@ -7,10 +7,10 @@ import logging
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QSizePolicy,
+    QStackedLayout,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -26,6 +26,7 @@ from piprints.imaging import Photo
 from piprints.ui.event_bridge import QtEventBridge
 from piprints.ui.photo_presentation import photo_to_pixmap
 from piprints.ui.widgets.camera_preview import CameraPreviewWidget
+from piprints.ui.widgets.countdown_presentation import CountdownPresentation
 
 logger = logging.getLogger(__name__)
 
@@ -84,24 +85,30 @@ class BoothScreen(QWidget):
         self._is_stopping = False
         self._event_bridge = event_bridge
         self._event_bridge.countdown_tick.connect(self._show_countdown_tick)
+        self._event_bridge.state_changed.connect(self._present_booth_state)
         self._event_bridge.review_ready.connect(self._show_review)
 
         self._preview = CameraPreviewWidget(camera)
-        self._countdown_label = QLabel()
-        self._countdown_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._countdown_label.setStyleSheet("font-size: 48px; font-weight: bold;")
+        self._countdown_presentation = CountdownPresentation()
+        # Retain this alias while the existing screen tests inspect the label.
+        self._countdown_label = self._countdown_presentation._number_label
         self._progress_label = QLabel()
         self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._take_photo_button = QPushButton("Take Photo")
         self._take_photo_button.clicked.connect(self._start_countdown)
 
-        preview_page = QWidget()
-        preview_layout = QVBoxLayout(preview_page)
+        preview_content = QWidget()
+        preview_layout = QVBoxLayout(preview_content)
         preview_layout.setContentsMargins(0, 0, 0, 0)
         preview_layout.addWidget(self._preview, stretch=1)
         preview_layout.addWidget(self._progress_label)
-        preview_layout.addWidget(self._countdown_label)
         preview_layout.addWidget(self._take_photo_button)
+
+        preview_page = QWidget()
+        preview_stack = QStackedLayout(preview_page)
+        preview_stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        preview_stack.addWidget(preview_content)
+        preview_stack.addWidget(self._countdown_presentation)
 
         self._review_label = QLabel()
         self._review_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -122,7 +129,7 @@ class BoothScreen(QWidget):
         self._pages.addWidget(preview_page)
         self._pages.addWidget(review_page)
 
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._pages)
 
@@ -150,7 +157,7 @@ class BoothScreen(QWidget):
         """Clear session-specific presentation before the next idle screen."""
         self._review_pixmap = None
         self._review_label.clear()
-        self._countdown_label.clear()
+        self._countdown_presentation.clear()
         self._progress_label.clear()
         self._take_photo_button.setEnabled(True)
         self._pages.setCurrentIndex(0)
@@ -175,13 +182,22 @@ class BoothScreen(QWidget):
 
     def _show_countdown_tick(self, value: int) -> None:
         """Render a controller-owned countdown value delivered by Qt."""
-        self._countdown_label.setText(str(value))
+        self._countdown_presentation.show_tick(value)
+
+    def _present_booth_state(
+        self, _previous_state: BoothState, state: BoothState
+    ) -> None:
+        """Keep the overlay visible only for the application countdown state."""
+        if state is BoothState.COUNTDOWN:
+            self._countdown_presentation.begin()
+            return
+        self._countdown_presentation.clear()
 
     def _begin_capture(self) -> None:
         """Run the already-authorized capture outside the UI thread."""
         if self._is_stopping or self._controller.state is not BoothState.CAPTURING:
             return
-        self._countdown_label.setText("Capturing…")
+        self._countdown_presentation.clear()
         self._preview.stop()
         self._capture_worker = _CaptureWorker(self._controller)
         self._capture_worker.capture_succeeded.connect(self._handle_capture_result)
