@@ -12,6 +12,7 @@ from piprints.booth import (
     BoothSession,
     BoothState,
     BoothStateError,
+    Countdown,
 )
 from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import Layout, SinglePhotoLayout
@@ -26,6 +27,7 @@ def make_controller(camera: FakeCamera, capture_directory: Path) -> BoothControl
         photo_loader=PhotoLoader(),
         photo_pipeline=PhotoPipeline(),
         layout=SinglePhotoLayout(),
+        countdown=Countdown(3, delay=lambda _: None),
     )
 
 
@@ -70,6 +72,8 @@ def test_successful_capture_transitions_to_review(tmp_path: Path) -> None:
 
     controller.start_countdown()
     assert controller.state is BoothState.COUNTDOWN
+    controller.run_countdown(lambda _: None)
+    assert controller.state is BoothState.CAPTURING
 
     captured_image = controller.capture()
 
@@ -80,10 +84,23 @@ def test_successful_capture_transitions_to_review(tmp_path: Path) -> None:
     assert camera.capture_paths[0].suffix == ".jpg"
 
 
+def test_countdown_execution_moves_the_controller_to_capturing(tmp_path: Path) -> None:
+    """Countdown completion authorizes capture without performing it itself."""
+    controller = make_controller(FakeCamera(), tmp_path / "captures")
+    ticks: list[int] = []
+
+    controller.start_countdown()
+    controller.run_countdown(ticks.append)
+
+    assert ticks == [3, 2, 1]
+    assert controller.state is BoothState.CAPTURING
+
+
 def test_completed_session_can_be_finished_and_return_to_idle(tmp_path: Path) -> None:
     """A reviewed result remains available until the lifecycle is finished."""
     controller = make_controller(FakeCamera(), tmp_path / "captures")
     controller.start_countdown()
+    controller.run_countdown(lambda _: None)
     controller.capture()
 
     controller.complete_session()
@@ -120,6 +137,7 @@ def test_retake_returns_to_idle_preview(tmp_path: Path) -> None:
     """Retake clears the reviewed image and makes another capture possible."""
     controller = make_controller(FakeCamera(), tmp_path / "captures")
     controller.start_countdown()
+    controller.run_countdown(lambda _: None)
     controller.capture()
 
     controller.retake()
@@ -144,6 +162,7 @@ def test_capture_failure_returns_to_idle_and_preserves_cause(tmp_path: Path) -> 
         FakeCamera(capture_error=camera_error), tmp_path / "captures"
     )
     controller.start_countdown()
+    controller.run_countdown(lambda _: None)
 
     with pytest.raises(BoothCaptureError) as error_info:
         controller.capture()
@@ -161,6 +180,7 @@ def test_capture_workflow_can_be_repeated(tmp_path: Path) -> None:
 
     for _ in range(2):
         controller.start_countdown()
+        controller.run_countdown(lambda _: None)
         controller.capture()
         controller.retake()
 
@@ -208,6 +228,7 @@ def test_capture_processes_photo_and_uses_selected_layout(tmp_path: Path) -> Non
     )
 
     controller.start_countdown()
+    controller.run_countdown(lambda _: None)
     final_photo = controller.capture()
 
     assert len(operation.photos) == 1
@@ -243,6 +264,7 @@ def test_controller_collects_a_multi_photo_session_before_review(
     )
 
     controller.start_countdown()
+    controller.run_countdown(lambda _: None)
     assert controller.capture() is None
     assert controller.state is BoothState.PREPARING
     assert controller.session is not None
@@ -251,6 +273,7 @@ def test_controller_collects_a_multi_photo_session_before_review(
     assert layout.photos is None
 
     controller.start_countdown()
+    controller.run_countdown(lambda _: None)
     final_photo = controller.capture()
 
     assert controller.state is BoothState.REVIEW

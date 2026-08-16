@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PIL import Image
 from PySide6.QtWidgets import QApplication
 
-from piprints.booth import BoothController
+from piprints.booth import BoothController, Countdown
 from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import FourPhotoLayout
 from piprints.ui.photo_presentation import photo_to_pixmap
@@ -26,6 +26,7 @@ def make_controller(capture_directory: Path) -> BoothController:
         photo_loader=PhotoLoader(),
         photo_pipeline=PhotoPipeline(),
         layout=FourPhotoLayout(),
+        countdown=Countdown(3, delay=lambda _: None),
     )
 
 

@@ -7,21 +7,21 @@ import pytest
 from piprints.booth import Countdown
 
 
-def test_countdown_progresses_to_capture_without_owning_a_clock() -> None:
-    """A caller can schedule ticks without blocking the UI thread."""
-    countdown = Countdown(3)
+def test_countdown_yields_ticks_in_order_without_waiting_in_tests() -> None:
+    """A fake delay makes countdown execution deterministic and immediate."""
+    delays: list[float] = []
+    countdown = Countdown(3, delay=delays.append)
 
-    assert countdown.start() == 3
-    assert countdown.advance() == 2
-    assert countdown.advance() == 1
-    assert countdown.advance() is None
-    assert countdown.remaining_seconds is None
+    assert tuple(countdown.ticks()) == (3, 2, 1)
+    assert delays == [1, 1, 1]
 
 
-def test_countdown_requires_start_before_advancing() -> None:
-    """Invalid sequencing is detected at the countdown boundary."""
-    with pytest.raises(RuntimeError, match="not been started"):
-        Countdown(1).advance()
+def test_countdown_uses_its_configured_duration() -> None:
+    """The number of ticks comes from the configured booth duration."""
+    countdown = Countdown(2, delay=lambda _: None)
+
+    assert countdown.duration_seconds == 2
+    assert tuple(countdown.ticks()) == (2, 1)
 
 
 @pytest.mark.parametrize("duration", [0, -1, True, 1.5])

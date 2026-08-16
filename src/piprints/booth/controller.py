@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -48,6 +49,7 @@ class BoothController:
         photo_pipeline: PhotoPipeline,
         layout: Layout,
         countdown_duration_seconds: int = 3,
+        countdown: Countdown | None = None,
     ) -> None:
         self._camera = camera
         self._capture_directory = capture_directory
@@ -56,7 +58,7 @@ class BoothController:
         self._layout = layout
         self._state = BoothState.IDLE
         self._session: BoothSession | None = None
-        self._countdown = Countdown(countdown_duration_seconds)
+        self._countdown = countdown or Countdown(countdown_duration_seconds)
 
     @property
     def state(self) -> BoothState:
@@ -97,8 +99,8 @@ class BoothController:
         self._transition_to(BoothState.IDLE)
         logger.info("Booth session finished: %s", session.id)
 
-    def start_countdown(self) -> int:
-        """Start countdown for the next session photo and return its display value."""
+    def start_countdown(self) -> None:
+        """Enter the countdown state for the next required session photo."""
         if self._state is BoothState.IDLE:
             self.begin_session()
         self._require_state(BoothState.PREPARING)
@@ -109,12 +111,18 @@ class BoothController:
             session.photo_count + 1,
             session.target_photo_count,
         )
-        return self._countdown.start()
 
-    def advance_countdown(self) -> int | None:
-        """Advance countdown and return ``None`` when the capture should begin."""
+    def run_countdown(self, on_tick: Callable[[int], None]) -> None:
+        """Execute countdown ticks, then make the booth ready to capture.
+
+        Call this from a worker when the configured delay can block. The
+        callback is intentionally small so a future presentation or event
+        layer can observe ticks without taking ownership of timing.
+        """
         self._require_state(BoothState.COUNTDOWN)
-        return self._countdown.advance()
+        for tick in self._countdown.ticks():
+            on_tick(tick)
+        self._transition_to(BoothState.CAPTURING)
 
     def capture(self) -> Photo | None:
         """Capture one still image and compose only when the session is complete.
@@ -126,8 +134,7 @@ class BoothController:
         otherwise returns ``None`` so the caller can resume preview for the
         next countdown.
         """
-        self._require_state(BoothState.COUNTDOWN)
-        self._transition_to(BoothState.CAPTURING)
+        self._require_state(BoothState.CAPTURING)
         destination = self._next_capture_path()
 
         try:

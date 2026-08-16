@@ -1,12 +1,17 @@
-"""Timer-independent countdown progression for the booth workflow."""
+"""Framework-independent countdown execution for booth workflows."""
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from time import sleep
+
+Delay = Callable[[float], None]
+
 
 class Countdown:
-    """Track discrete countdown ticks without owning a clock or a UI."""
+    """Execute a countdown and yield display-ready ticks in descending order."""
 
-    def __init__(self, duration_seconds: int) -> None:
+    def __init__(self, duration_seconds: int, delay: Delay = sleep) -> None:
         if (
             isinstance(duration_seconds, bool)
             or not isinstance(duration_seconds, int)
@@ -14,24 +19,19 @@ class Countdown:
         ):
             raise ValueError("Countdown duration must be a positive integer.")
         self._duration_seconds = duration_seconds
-        self._remaining_seconds: int | None = None
+        self._delay = delay
 
     @property
-    def remaining_seconds(self) -> int | None:
-        """Return the current displayed value, or ``None`` before start/end."""
-        return self._remaining_seconds
+    def duration_seconds(self) -> int:
+        """Return the configured duration and number of countdown ticks."""
+        return self._duration_seconds
 
-    def start(self) -> int:
-        """Start the countdown and return its initial display value."""
-        self._remaining_seconds = self._duration_seconds
-        return self._remaining_seconds
+    def ticks(self) -> Iterator[int]:
+        """Yield each countdown value after holding it for one second.
 
-    def advance(self) -> int | None:
-        """Advance one tick, returning ``None`` when capture should begin."""
-        if self._remaining_seconds is None:
-            raise RuntimeError("Countdown has not been started.")
-        self._remaining_seconds -= 1
-        if self._remaining_seconds == 0:
-            self._remaining_seconds = None
-            return None
-        return self._remaining_seconds
+        The injected delay keeps production timing simple while allowing unit
+        tests and alternate application hosts to execute deterministically.
+        """
+        for remaining_seconds in range(self._duration_seconds, 0, -1):
+            yield remaining_seconds
+            self._delay(1)

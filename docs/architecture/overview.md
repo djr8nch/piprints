@@ -125,11 +125,14 @@ flowchart LR
     Capturing -->|camera error| Idle
 ```
 
-`Countdown` is a timer-independent progression object. `BoothScreen` schedules
-its ticks with `QTimer`, keeping waits off the Qt UI thread; the controller
-decides that a countdown starts and the worker performs its resulting capture.
-The screen renders `Photo n of N` from `BoothSession` instead of keeping a
-second progress counter.
+`Countdown` is a framework-independent booth service. It yields configured
+countdown ticks through an injected delay callable, so unit tests can use a
+no-op delay while the runtime uses normal wall-clock sleep. `BoothController`
+owns countdown execution and transitions from `COUNTDOWN` to `CAPTURING` once
+the ticks complete. `BoothScreen` runs that blocking application work on a Qt
+worker and renders its ticks; it does not own timing or decide the lifecycle
+transition. The screen renders `Photo n of N` from `BoothSession` instead of
+keeping a second progress counter.
 
 The preview worker stops before the still capture begins. Picamera2 restores
 the preview configuration after the still capture, and the preview worker is
@@ -160,9 +163,9 @@ stateDiagram-v2
 `BoothController` owns the allowed lifecycle transitions, while `BoothState`
 represents the current lifecycle state. This increment implements session
 creation (`IDLE → PREPARING`), capture and processing transitions, review,
-completion/reset, and failure cleanup. Countdown timing and UI observation
-remain separate concerns. The enum has no dependency on Qt, hardware, imaging,
-printing, or persistence.
+completion/reset, failure cleanup, and framework-independent countdown
+execution. UI observation remains separate. The enum has no dependency on Qt,
+hardware, imaging, printing, or persistence.
 
 ## Package responsibilities
 
