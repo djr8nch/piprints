@@ -23,6 +23,14 @@ progress. The controller creates it from the selected layout's
 `required_photos`, adds each processed capture, and composes only after it is
 complete. It coordinates imaging collaborators without decoding or
 transforming pixels.
+
+`BoothSession` is the booth-layer record for one interaction's identity and
+image artifacts. It holds ordered captured `Photo` values and, once composed,
+one final `Photo`; it has no hardware, UI, layout, or persistence behavior.
+The current capture workflow continues to use `CaptureSession` for its
+layout-derived progress invariant. A later orchestration milestone can adopt
+`BoothSession` as the controller's active session record without coupling it to
+those collaborators.
 `PiCamera` adapts Picamera2 and libcamera behind that contract. It configures
 continuous autofocus for Camera Module 3, supplies standard `PreviewFrame`
 values for live preview, and switches to a still configuration for capture.
@@ -48,9 +56,12 @@ flowchart TD
     Booth -->|capture path| Loader["PhotoLoader"]
     Loader --> Photo["Photo"]
     Booth --> Session["CaptureSession"]
+    Booth -. future active session record .-> BoothSession["BoothSession"]
     Booth -->|one photo| Pipeline
     Pipeline -->|processed photo| Session
     Session -->|complete sequence| Layout
+    BoothSession --> CapturedPhotos["Photo, Photo, ..."]
+    BoothSession --> FinalPhoto["final Photo (optional)"]
     Layout -->|final photo| Window
     Window -->|preview frames| CameraContract
     CameraImpl --> CameraContract
