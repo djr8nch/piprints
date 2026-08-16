@@ -27,6 +27,7 @@ from piprints.ui.event_bridge import QtEventBridge
 from piprints.ui.photo_presentation import photo_to_pixmap
 from piprints.ui.widgets.camera_preview import CameraPreviewWidget
 from piprints.ui.widgets.countdown_presentation import CountdownPresentation
+from piprints.ui.widgets.processing_presentation import ProcessingPresentation
 
 logger = logging.getLogger(__name__)
 
@@ -125,9 +126,12 @@ class BoothScreen(QWidget):
         review_layout.addWidget(self._review_label, stretch=1)
         review_layout.addWidget(self._retake_button)
 
+        self._processing_presentation = ProcessingPresentation()
+
         self._pages = QStackedWidget()
         self._pages.addWidget(preview_page)
         self._pages.addWidget(review_page)
+        self._pages.addWidget(self._processing_presentation)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -187,11 +191,17 @@ class BoothScreen(QWidget):
     def _present_booth_state(
         self, _previous_state: BoothState, state: BoothState
     ) -> None:
-        """Keep the overlay visible only for the application countdown state."""
+        """Present state-specific content without making workflow decisions."""
         if state is BoothState.COUNTDOWN:
             self._countdown_presentation.begin()
             return
         self._countdown_presentation.clear()
+        if state is BoothState.PROCESSING:
+            self._pages.setCurrentWidget(self._processing_presentation)
+        elif state is BoothState.REVIEW:
+            self._pages.setCurrentIndex(1)
+        elif state is BoothState.ERROR:
+            self._pages.setCurrentIndex(0)
 
     def _begin_capture(self) -> None:
         """Run the already-authorized capture outside the UI thread."""
@@ -206,8 +216,8 @@ class BoothScreen(QWidget):
         self._capture_worker.start()
 
     def _recover_from_countdown_failure(self, message: str) -> None:
-        """Return to the clean idle presentation after a countdown failure."""
-        self._controller.reset_session()
+        """Leave recovery to the application's error presentation."""
+        logger.warning("Countdown failed: %s", message)
 
     def _countdown_finished(self) -> None:
         """Release a finished countdown worker."""
@@ -234,8 +244,8 @@ class BoothScreen(QWidget):
         self._update_review_pixmap()
 
     def _recover_from_capture_failure(self, message: str) -> None:
-        """Return to the clean idle presentation after a failed capture."""
-        self._controller.reset_session()
+        """Leave recovery to the application's error presentation."""
+        logger.warning("Capture failed: %s", message)
 
     def _capture_worker_finished(self) -> None:
         """Release the completed worker reference before another capture."""
