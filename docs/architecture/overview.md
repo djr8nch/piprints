@@ -113,18 +113,20 @@ silently resizing, cropping, or changing the booth layout. Any printer-width
 resizing will be a separate, explicit preparation decision before encoding.
 Protocol framing and hardware transport remain future adapter responsibilities.
 
-`piprints.printing.thermal.PySerialTransport` is the infrastructure boundary
-for that future adapter. It opens configured raw serial connections, writes all
-bytes or raises `SerialTransportError`, and closes connections explicitly or
-through a context manager. Its `SerialTransportSettings` requires an injected
-device path and baud rate, with an optional timeout (one second by default);
-it does not assume a particular `/dev` device or printer model.
+`piprints.printing.thermal.PrinterTransport` is the byte-transport boundary for
+thermal adapters. It opens, writes raw bytes, and closes a connection;
+`PySerialTransport` and `UsbPrinterTransport` are its infrastructure adapters.
+The former uses explicit serial settings, while the latter opens a configured
+Linux printer-class device path with normal binary file I/O for each print
+operation. Neither transport frames ESC/POS commands or encodes images.
 
-`PrimuzThermalPrinter` composes the raster encoder and serial transport behind
-the generic `Printer` contract. It is intentionally pre-hardware-validation:
-the sole raster framing command is an explicitly documented ESC/POS assumption,
-not a claim of verified PRIMUZ compatibility. No printer is created by default
-at bootstrap, so digital-only runtime startup remains independent of hardware.
+`PrimuzThermalPrinter` composes the raster encoder and generic byte transport
+behind the generic `Printer` contract. A Raspberry Pi 4 has physically
+validated the PRIMUZ MC206H as USB VID `0485`, PID `5741`, product `Virtual
+PRN`, using `usblp` at the observed path `/dev/usb/lp0`; raw ESC/POS text was
+printed successfully. That validates byte transport, not yet PiPrints raster
+image output. No printer is created by default at bootstrap, so digital-only
+runtime startup remains independent of hardware.
 
 The UI depends directly on the PiPrints-owned camera contract only for preview
 frames. Workflow commands travel through `BoothController`; neither path gives

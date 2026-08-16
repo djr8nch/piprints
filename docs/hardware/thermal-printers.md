@@ -1,78 +1,80 @@
-# Thermal printer serial transport and PRIMUZ implementation
+# Thermal printer transport and PRIMUZ MC206H
 
-PiPrints provides a serial byte-transport boundary for future thermal printer
-adapters. The transport is backed by the maintained `pyserial` Python package,
-declared in `pyproject.toml` and installed with PiPrints' normal Python
-dependencies.
-
-Serial settings are supplied explicitly through `SerialTransportSettings`:
-
-- device path, such as the serial device assigned by Raspberry Pi OS;
-- baud rate; and
-- optional serial timeout, which defaults to one second.
-
-PiPrints does not select a default device path or baud rate because neither is
-hardware-validated for a particular printer model yet. Before configuring a
-future printer adapter, identify the device created by Raspberry Pi OS and
-confirm the required serial settings from the printer's documentation. The
-current transport sends raw bytes only; it does not implement printer commands,
-raster framing, or PRIMUZ-specific behavior.
-
-## PRIMUZ MC206H implementation — physical validation pending
-
-`PrimuzThermalPrinter` is present as a pre-hardware-validation adapter for the
-PRIMUZ Micro Thermal Printer Ticket Serial Port Printer Module, identified by
-retailer listings as MC206H / MC206H_12V. It composes:
+PiPrints separates printer protocol from the byte transport that reaches a
+device. `PrimuzThermalPrinter` owns ESC/POS raster framing, while an injected
+`PrinterTransport` owns the connection lifecycle and raw byte delivery:
 
 ```text
 PrimuzThermalPrinter
 ├── ThermalRasterEncoder
-└── SerialTransport
-    └── PySerialTransport / pyserial
+└── PrinterTransport
+    ├── PySerialTransport
+    └── UsbPrinterTransport
 ```
 
-The adapter receives the completed PiPrints `Photo`, uses the injected encoder
-for monochrome raster data, then sends one framed command through the injected
-transport. It does not perform booth layout work, open pyserial directly, or
-create a serial connection at application startup. PiPrints remains
-digital-only unless an application composition root explicitly injects this
-printer.
+The transport contract is deliberately small: `open()`, `write(data: bytes)`,
+and `close()`. A transport sends already-framed bytes only; it does not know
+about ESC/POS commands, raster encoding, feeds, printer policy, booth state,
+or UI behavior. `SerialTransport` remains the serial-specific protocol name
+for compatibility, and `PySerialTransport` continues to use `pyserial` with
+explicit `SerialTransportSettings` (port, baud rate, optional timeout).
 
-### Protocol assumption
+## Validated USB hardware
 
-The PRIMUZ retailer listing says the MC206H provides an ESC/POS instruction
-set, but its manufacturer command manual and development kit are not available
-in this repository. The adapter therefore makes one explicit, **unverified**
-assumption: it frames raster data as ESC/POS `GS v 0` in normal mode:
+The following physical result is the current source of truth for PiPrints:
 
-```text
-1D 76 30 00 xL xH yL yH d...
+- printer: PRIMUZ MC206H;
+- host: Raspberry Pi 4;
+- USB vendor ID: `0485`;
+- USB product ID: `5741`;
+- USB product string: `Virtual PRN`;
+- Linux driver: `usblp`;
+- observed character device: `/dev/usb/lp0`; and
+- raw ESC/POS text communication succeeded.
+
+The successful diagnostic command was:
+
+```bash
+printf '\x1b\x40PiPrints USB test\n\n\n' | sudo tee /dev/usb/lp0 > /dev/null
 ```
 
-`xL/xH` are the encoder's bytes per row and `yL/yH` its height, little-endian.
-The byte layout comes from Epson's [GS v 0 command reference](https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/gs_lv_0.html), while the
-model listing's [ESC/POS claim](https://www.newegg.com/p/3C6-018V-00CA9) is the
-only current PRIMUZ-specific evidence. This is not proof that the MC206H
-supports this command, width, raster polarity, or framing.
+The printer is therefore a Linux USB printer-class device in this validated
+setup, not a `/dev/ttyUSB*` or `/dev/ttyACM*` serial device. USB through
+`usblp` is the currently validated and recommended PiPrints transport for this
+hardware. Device paths can vary between systems; PiPrints does not assume that
+every installation will use `/dev/usb/lp0`.
 
-No initialization, feed, cut, status, density, timing, or baud-rate default
-commands are sent. Those details are intentionally deferred until manufacturer
-materials and physical validation are available.
+## USB transport
 
-### Hardware validation checklist
+`UsbPrinterTransport(device_path, *, file_factory=...)` writes to a configured
+Linux printer-class character device such as `/dev/usb/lp0`, using normal
+binary file I/O. It opens the device for each print operation, writes every
+provided byte (including retrying partial writes), flushes, and closes it. The
+per-operation lifecycle matches the PRIMUZ adapter and avoids holding a stale
+file handle if a USB cable is disconnected between jobs. Errors identify the
+configured device path and preserve their low-level cause as
+`UsbPrinterTransportError`.
 
-When the printer arrives, do not treat it as supported until all of the
-following are documented and tested:
+The optional `file_factory` is a test seam; production uses Python's built-in
+binary `open`. No `pyusb` or `libusb` dependency is needed because Linux
+already exposes the working device node.
 
-1. Confirm the exact model, power requirements, interface mode, pinout, and
-   safe Raspberry Pi connection or USB-to-serial adapter.
-2. Obtain the manufacturer command manual and verify the selected serial port,
-   baud rate, parity, flow control, and timeout.
-3. Send a minimal diagnostic command from the manufacturer material before
-   sending raster data.
-4. Validate `GS v 0` support, mode byte, raster dimensions, bit order, black
-   polarity, and maximum printable dot width with synthetic patterns.
-5. Measure whether explicit initialization, feed, pacing, density, or status
-   handling is required; add only behavior confirmed by those results.
-6. Validate repeated jobs, paper-out behavior, disconnect recovery, shutdown,
-   and UI-thread responsiveness.
+## PRIMUZ raster protocol status
+
+`PrimuzThermalPrinter` receives a completed PiPrints `Photo`, encodes it with
+the injected `ThermalRasterEncoder`, and sends one ESC/POS `GS v 0` raster
+command through any `PrinterTransport`. It has no branch for USB or serial;
+bootstrap or future explicit printer configuration selects the transport.
+
+The raw text test validates USB byte transport only. It does **not** yet prove
+that the MC206H accepts PiPrints' raster command, raster dimensions, polarity,
+or bit order. The adapter's raster command remains an ESC/POS assumption based
+on Epson's [GS v 0 command reference](https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/gs_lv_0.html).
+
+## Next hardware validation
+
+Wire `UsbPrinterTransport("/dev/usb/lp0")` into `PrimuzThermalPrinter` at the
+composition boundary, then print a small representative PiPrints raster image.
+Confirm visible output, dot polarity, bit order, dimensions, and required feed
+behavior before marking image-printing hardware validation complete. Also test
+repeated jobs, disconnect recovery, paper-out behavior, and UI responsiveness.

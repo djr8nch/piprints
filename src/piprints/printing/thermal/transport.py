@@ -1,19 +1,23 @@
-"""Serial byte transport for future thermal-printer adapters."""
+"""Byte transports for thermal-printer adapters."""
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from types import TracebackType
-from typing import Protocol, Self
+from typing import BinaryIO, Protocol, Self
 
-from piprints.printing.exceptions import SerialTransportError
+from piprints.printing.exceptions import (
+    SerialTransportError,
+    UsbPrinterTransportError,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class SerialTransport(Protocol):
-    """Open, write raw bytes to, and close one serial connection."""
+class PrinterTransport(Protocol):
+    """Open, write raw bytes to, and close one printer connection."""
 
     def open(self) -> None:
         """Open the configured serial connection."""
@@ -22,7 +26,11 @@ class SerialTransport(Protocol):
         """Write all of ``data`` or raise a transport error."""
 
     def close(self) -> None:
-        """Close the serial connection if it is open."""
+        """Close the printer connection if it is open."""
+
+
+class SerialTransport(PrinterTransport, Protocol):
+    """Legacy name for the serial implementation's byte-transport contract."""
 
 
 class _SerialConnection(Protocol):
@@ -42,6 +50,26 @@ class _SerialFactory(Protocol):
         self, port: str, *, baudrate: int, timeout: float | None
     ) -> _SerialConnection:
         """Open and return a serial connection."""
+
+
+class _UsbPrinterFile(Protocol):
+    """The binary file behavior used by the USB printer transport."""
+
+    def write(self, data: bytes) -> int:
+        """Write bytes and return the number accepted by the device."""
+
+    def flush(self) -> None:
+        """Flush buffered bytes to the device."""
+
+    def close(self) -> None:
+        """Close the device file."""
+
+
+class _UsbPrinterFileFactory(Protocol):
+    """Open a configured Linux USB printer character device."""
+
+    def __call__(self, path: str, mode: str) -> _UsbPrinterFile:
+        """Return a writable binary device file."""
 
 
 @dataclass(frozen=True)
@@ -71,6 +99,11 @@ class SerialTransportSettings:
             )
         ):
             raise ValueError("Serial timeout must be non-negative seconds or None.")
+
+
+def _open_usb_printer_file(path: str, mode: str) -> BinaryIO:
+    """Open a Linux printer-class character device in binary write mode."""
+    return open(path, mode)
 
 
 def _open_pyserial(
@@ -168,3 +201,72 @@ class PySerialTransport:
             connection.close()
         except Exception as error:
             raise SerialTransportError("Unable to close serial transport.") from error
+
+
+class UsbPrinterTransport:
+    """Transport raw bytes to a Linux USB printer-class device node.
+
+    A device file is opened for each printer operation and closed immediately
+    afterwards. This mirrors the existing printer adapter lifecycle and avoids
+    retaining a stale handle if a USB printer is disconnected between jobs.
+    """
+
+    def __init__(
+        self,
+        device_path: str | Path,
+        *,
+        file_factory: _UsbPrinterFileFactory = _open_usb_printer_file,
+    ) -> None:
+        if not isinstance(device_path, str | Path):
+            raise ValueError("USB printer device path must be a non-empty path.")
+        path = str(device_path)
+        if not path:
+            raise ValueError("USB printer device path must be a non-empty string.")
+        self._device_path = path
+        self._file_factory = file_factory
+        self._file: _UsbPrinterFile | None = None
+
+    def open(self) -> None:
+        """Open the configured USB printer device once."""
+        if self._file is not None:
+            return
+        try:
+            self._file = self._file_factory(self._device_path, "wb")
+        except Exception as error:
+            raise UsbPrinterTransportError(
+                f"Unable to open USB printer device {self._device_path}."
+            ) from error
+
+    def write(self, data: bytes) -> None:
+        """Write all bytes to the currently open USB printer device."""
+        device_file = self._file
+        if device_file is None:
+            raise UsbPrinterTransportError(
+                "USB printer transport must be open before writing."
+            )
+
+        remaining = data
+        try:
+            while remaining:
+                written = device_file.write(remaining)
+                if written is None or not 0 < written <= len(remaining):
+                    raise OSError("USB printer device accepted no bytes.")
+                remaining = remaining[written:]
+            device_file.flush()
+        except Exception as error:
+            raise UsbPrinterTransportError(
+                f"Unable to write to USB printer device {self._device_path}."
+            ) from error
+
+    def close(self) -> None:
+        """Close and discard the current USB printer device file."""
+        device_file = self._file
+        if device_file is None:
+            return
+        self._file = None
+        try:
+            device_file.close()
+        except Exception as error:
+            raise UsbPrinterTransportError(
+                f"Unable to close USB printer device {self._device_path}."
+            ) from error

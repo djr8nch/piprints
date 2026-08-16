@@ -22,6 +22,11 @@ from piprints.imaging.layouts import (
     SinglePhotoLayout,
 )
 from piprints.printing import Printer
+from piprints.printing.thermal import (
+    PrimuzThermalPrinter,
+    ThermalRasterEncoder,
+    UsbPrinterTransport,
+)
 from piprints.storage import FilesystemPhotoStorage, PhotoStorage
 from piprints.themes import ThemeCatalog, ThemeOption
 from piprints.ui import QtEventBridge
@@ -46,6 +51,17 @@ def create_camera() -> Camera:
 def create_photo_storage(output_directory: Path | None = None) -> PhotoStorage:
     """Create filesystem storage for completed digital booth photos."""
     return FilesystemPhotoStorage(output_directory or Path.cwd() / "photos")
+
+
+def create_primuz_usb_printer(device_path: str | Path) -> Printer:
+    """Create the validated USB transport wiring for a PRIMUZ MC206H.
+
+    Callers supply the discovered Linux printer-class device path because it is
+    system-specific; no hardware printer is created by default.
+    """
+    return PrimuzThermalPrinter(
+        UsbPrinterTransport(device_path), ThermalRasterEncoder()
+    )
 
 
 def create_layout_catalog() -> LayoutCatalog:

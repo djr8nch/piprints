@@ -1,21 +1,21 @@
-"""Pre-hardware-validation adapter for the PRIMUZ MC206H thermal printer."""
+"""PRIMUZ MC206H thermal-printer adapter; raster validation remains pending."""
 
 from __future__ import annotations
 
 import logging
 
 from piprints.imaging import Photo
-from piprints.printing.exceptions import PrintError, SerialTransportError
+from piprints.printing.exceptions import PrintError, PrinterTransportError
 from piprints.printing.models import PrintResult
 from piprints.printing.thermal.raster import ThermalRaster, ThermalRasterEncoder
-from piprints.printing.thermal.transport import SerialTransport
+from piprints.printing.thermal.transport import PrinterTransport
 
 logger = logging.getLogger(__name__)
 
-# PRE-HARDWARE-VALIDATION ASSUMPTION: The PRIMUZ MC206H listing says the model
-# provides an ESC/POS instruction set, but no manufacturer command manual is
-# available to this project. These bytes use the ESC/POS GS v 0 raster-image
-# format documented by Epson. PRIMUZ support must be verified on arrival.
+# RASTER-VALIDATION ASSUMPTION: USB raw ESC/POS text output is physically
+# validated, but no manufacturer command manual is available to this project.
+# These bytes use the ESC/POS GS v 0 raster-image format documented by Epson.
+# PRIMUZ raster compatibility still requires physical validation.
 _ESC_POS_RASTER_PREFIX = b"\x1d\x76\x30"
 _NORMAL_RASTER_MODE = 0
 _MAX_16_BIT_VALUE = 0xFFFF
@@ -30,7 +30,7 @@ class PrimuzThermalPrinter:
     """
 
     def __init__(
-        self, transport: SerialTransport, raster_encoder: ThermalRasterEncoder
+        self, transport: PrinterTransport, raster_encoder: ThermalRasterEncoder
     ) -> None:
         self._transport = transport
         self._raster_encoder = raster_encoder
@@ -46,13 +46,13 @@ class PrimuzThermalPrinter:
         try:
             self._transport.open()
             self._transport.write(command)
-        except SerialTransportError as error:
+        except PrinterTransportError as error:
             self._close_after_transport_failure()
             raise PrintError("Unable to submit photo to the PRIMUZ printer.") from error
 
         try:
             self._transport.close()
-        except SerialTransportError as error:
+        except PrinterTransportError as error:
             raise PrintError("Unable to close the PRIMUZ printer transport.") from error
 
         logger.info("Submitted one raster image to the PRIMUZ printer")
@@ -62,7 +62,7 @@ class PrimuzThermalPrinter:
         """Attempt cleanup while preserving the original transport failure."""
         try:
             self._transport.close()
-        except SerialTransportError:
+        except PrinterTransportError:
             logger.exception("Unable to close PRIMUZ transport after print failure")
 
 

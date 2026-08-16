@@ -1,21 +1,30 @@
-"""Tests for the pre-hardware-validation PRIMUZ printer adapter."""
+"""Tests for the PRIMUZ printer adapter and generic transport boundary."""
 
 import pytest
 from PIL import Image
 
 from piprints.imaging import Photo
-from piprints.printing import Printer, PrintError, PrintResult, SerialTransportError
-from piprints.printing.thermal import PrimuzThermalPrinter, ThermalRasterEncoder
+from piprints.printing import (
+    Printer,
+    PrintError,
+    PrinterTransportError,
+    PrintResult,
+)
+from piprints.printing.thermal import (
+    PrimuzThermalPrinter,
+    PrinterTransport,
+    ThermalRasterEncoder,
+)
 
 
 class RecordingTransport:
-    """Record serial-transport calls without opening a serial connection."""
+    """Record generic byte-transport calls without opening a device."""
 
     def __init__(
         self,
         *,
-        write_error: SerialTransportError | None = None,
-        close_error: SerialTransportError | None = None,
+        write_error: PrinterTransportError | None = None,
+        close_error: PrinterTransportError | None = None,
     ) -> None:
         self.write_error = write_error
         self.close_error = close_error
@@ -45,6 +54,13 @@ def submit_photo(printer: Printer, photo: Photo) -> PrintResult:
     return printer.print_photo(photo)
 
 
+def send_raw_bytes(transport: PrinterTransport) -> None:
+    """Exercise the adapter's dependency through the generic transport API."""
+    transport.open()
+    transport.write(b"test")
+    transport.close()
+
+
 def test_printer_frames_and_sends_one_raster_command() -> None:
     """One prepared 8-dot image becomes one assumed ESC/POS raster command."""
     transport = RecordingTransport()
@@ -55,6 +71,18 @@ def test_printer_frames_and_sends_one_raster_command() -> None:
     assert result == PrintResult()
     assert transport.calls == ["open", "write", "close"]
     assert transport.writes == [b"\x1d\x76\x30\x00\x01\x00\x01\x00\xff"]
+
+
+def test_printer_operates_through_the_generic_transport_contract() -> None:
+    """The PRIMUZ adapter has no knowledge of serial versus USB transport."""
+    transport = RecordingTransport()
+
+    send_raw_bytes(transport)
+    PrimuzThermalPrinter(transport, ThermalRasterEncoder()).print_photo(
+        Photo(Image.new("RGB", (8, 1), "black"))
+    )
+
+    assert transport.calls == ["open", "write", "close", "open", "write", "close"]
 
 
 def test_printer_uses_encoded_row_major_raster_data_once() -> None:
@@ -73,7 +101,7 @@ def test_printer_uses_encoded_row_major_raster_data_once() -> None:
 
 def test_transport_failure_becomes_a_printer_error_and_closes() -> None:
     """Transport details do not leak through the public printer boundary."""
-    transport_error = SerialTransportError("serial cable disconnected")
+    transport_error = PrinterTransportError("transport disconnected")
     transport = RecordingTransport(write_error=transport_error)
     printer = PrimuzThermalPrinter(transport, ThermalRasterEncoder())
 
@@ -87,7 +115,7 @@ def test_transport_failure_becomes_a_printer_error_and_closes() -> None:
 
 def test_close_failure_becomes_a_printer_error_after_sending_raster() -> None:
     """A failed transport cleanup is not reported as successful printing."""
-    close_error = SerialTransportError("serial port did not close")
+    close_error = PrinterTransportError("transport did not close")
     transport = RecordingTransport(close_error=close_error)
     printer = PrimuzThermalPrinter(transport, ThermalRasterEncoder())
 
