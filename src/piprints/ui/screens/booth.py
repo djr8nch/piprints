@@ -196,6 +196,7 @@ class BoothScreen(QWidget):
 
     def _recover_from_countdown_failure(self, message: str) -> None:
         """Restore controls if the application countdown cannot finish."""
+        self._controller.reset_session()
         self._countdown_label.setText(f"Countdown failed\n{message}")
         self._take_photo_button.setEnabled(True)
         self._preview.start()
@@ -228,6 +229,7 @@ class BoothScreen(QWidget):
 
     def _recover_from_capture_failure(self, message: str) -> None:
         """Return to idle preview after a failed camera capture."""
+        self._controller.reset_session()
         self._countdown_label.setText(f"Capture failed\n{message}")
         self._take_photo_button.setEnabled(True)
         self._update_progress()

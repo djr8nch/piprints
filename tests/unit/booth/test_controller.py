@@ -244,8 +244,8 @@ def test_retake_outside_review_raises_state_error(tmp_path: Path) -> None:
         controller.retake()
 
 
-def test_capture_failure_returns_to_idle_and_preserves_cause(tmp_path: Path) -> None:
-    """A camera failure is translated without leaving the booth stuck."""
+def test_capture_failure_enters_error_and_preserves_cause(tmp_path: Path) -> None:
+    """A camera failure is translated and leaves an explicit recovery boundary."""
     camera_error = RuntimeError("camera disconnected")
     controller = make_controller(
         FakeCamera(capture_error=camera_error), tmp_path / "captures"
@@ -257,9 +257,21 @@ def test_capture_failure_returns_to_idle_and_preserves_cause(tmp_path: Path) -> 
         controller.capture()
 
     assert error_info.value.__cause__ is camera_error
-    assert controller.state is BoothState.IDLE
+    assert controller.state is BoothState.ERROR
     assert controller.last_capture is None
     assert controller.session is None
+
+    controller.reset_session()
+
+    assert controller.state is BoothState.IDLE
+
+
+def test_reset_session_requires_a_failed_workflow(tmp_path: Path) -> None:
+    """Reset cannot discard a healthy or reviewed session accidentally."""
+    controller = make_controller(FakeCamera(), tmp_path / "captures")
+
+    with pytest.raises(BoothStateError, match="requires ERROR"):
+        controller.reset_session()
 
 
 def test_capture_workflow_can_be_repeated(tmp_path: Path) -> None:

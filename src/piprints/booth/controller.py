@@ -116,6 +116,12 @@ class BoothController:
         self._transition_to(BoothState.IDLE)
         logger.info("Booth session finished: %s", session.id)
 
+    def reset_session(self) -> None:
+        """Recover from a failed session and return the booth to idle."""
+        self._require_state(BoothState.ERROR)
+        self._transition_to(BoothState.IDLE)
+        logger.info("Booth reset after a failed session")
+
     def start_countdown(self) -> None:
         """Enter the countdown state for the next required session photo."""
         if self._state is BoothState.IDLE:
@@ -228,11 +234,10 @@ class BoothController:
         )
 
     def _abort_session(self, error: Exception) -> None:
-        """Clear a failed session through the explicit error boundary."""
+        """Clear failed artifacts while leaving recovery at the error boundary."""
         self._transition_to(BoothState.ERROR)
         self._publish(BoothEventType.ERROR, message=str(error))
         self._session = None
-        self._transition_to(BoothState.IDLE)
 
     def _publish(
         self,

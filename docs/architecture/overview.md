@@ -141,7 +141,8 @@ flowchart LR
     Review -->|Retake| Idle
     Review -->|Complete session| Complete
     Complete -->|Finish session| Idle
-    Capturing -->|camera error| Idle
+    Capturing -->|camera error| Error
+    Error -->|Reset session| Idle
 ```
 
 `Countdown` is a framework-independent booth service. It yields configured
@@ -185,6 +186,9 @@ creation (`IDLE → PREPARING`), capture and processing transitions, review,
 completion/reset, failure cleanup, and framework-independent countdown
 execution. UI observation remains separate. The enum has no dependency on Qt,
 hardware, imaging, printing, or persistence.
+
+The complete transition rules, component boundaries, events, and recovery
+behavior are documented in the [booth lifecycle](booth-lifecycle.md).
 
 ## Package responsibilities
 
