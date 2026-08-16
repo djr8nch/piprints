@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -16,13 +16,30 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from piprints.booth import BoothCaptureError, BoothController, BoothState
+from piprints.booth import (
+    BoothCaptureError,
+    BoothController,
+    BoothEvent,
+    BoothEventType,
+    BoothState,
+)
 from piprints.camera import Camera
 from piprints.imaging import Photo
 from piprints.ui.photo_presentation import photo_to_pixmap
 from piprints.ui.widgets.camera_preview import CameraPreviewWidget
 
 logger = logging.getLogger(__name__)
+
+
+class _BoothEventBridge(QObject):
+    """Forward booth events into the Qt thread without changing their meaning."""
+
+    event_received = Signal(object)
+
+    def on_booth_event(self, event: BoothEvent) -> None:
+        """Emit an application event through a thread-safe Qt signal."""
+        self.event_received.emit(event)
+
 
 class _CaptureWorker(QThread):
     """Run the blocking booth capture operation away from the UI thread."""
@@ -46,7 +63,6 @@ class _CaptureWorker(QThread):
 class _CountdownWorker(QThread):
     """Execute application-owned countdown timing away from the UI thread."""
 
-    tick = Signal(int)
     countdown_failed = Signal(str)
 
     def __init__(self, controller: BoothController) -> None:
@@ -54,9 +70,9 @@ class _CountdownWorker(QThread):
         self._controller = controller
 
     def run(self) -> None:
-        """Forward application countdown ticks to the presentation layer."""
+        """Execute the controller-owned countdown lifecycle."""
         try:
-            self._controller.run_countdown(self.tick.emit)
+            self._controller.run_countdown()
         except Exception as error:
             logger.exception("Booth countdown worker failed")
             self.countdown_failed.emit(str(error))
@@ -72,6 +88,10 @@ class BoothScreen(QWidget):
         self._countdown_worker: _CountdownWorker | None = None
         self._review_pixmap: QPixmap | None = None
         self._is_stopping = False
+        self._event_bridge = _BoothEventBridge(self)
+        self._event_bridge.event_received.connect(self._handle_booth_event)
+        self._controller.add_event_listener(self._event_bridge)
+        self._event_listener_registered = True
 
         self._preview = CameraPreviewWidget(camera)
         self._countdown_label = QLabel()
@@ -118,11 +138,17 @@ class BoothScreen(QWidget):
     def start(self) -> None:
         """Start live preview when the window becomes visible."""
         self._is_stopping = False
+        if not self._event_listener_registered:
+            self._controller.add_event_listener(self._event_bridge)
+            self._event_listener_registered = True
         self._preview.start()
 
     def stop(self) -> None:
         """Stop timers and workers before the application releases the camera."""
         self._is_stopping = True
+        if self._event_listener_registered:
+            self._controller.remove_event_listener(self._event_bridge)
+            self._event_listener_registered = False
         self._preview.stop()
         if self._countdown_worker is not None and self._countdown_worker.isRunning():
             if not self._countdown_worker.wait(5000):
@@ -144,7 +170,6 @@ class BoothScreen(QWidget):
         self._take_photo_button.setEnabled(False)
         self._update_progress()
         self._countdown_worker = _CountdownWorker(self._controller)
-        self._countdown_worker.tick.connect(self._show_countdown_tick)
         self._countdown_worker.countdown_failed.connect(
             self._recover_from_countdown_failure
         )
@@ -152,9 +177,10 @@ class BoothScreen(QWidget):
         self._countdown_worker.finished.connect(self._begin_capture)
         self._countdown_worker.start()
 
-    def _show_countdown_tick(self, tick: int) -> None:
-        """Render an application-produced countdown value."""
-        self._countdown_label.setText(str(tick))
+    def _handle_booth_event(self, event: BoothEvent) -> None:
+        """Apply the small presentation behavior needed for current events."""
+        if event.event_type is BoothEventType.COUNTDOWN_TICK:
+            self._countdown_label.setText(str(event.countdown_value))
 
     def _begin_capture(self) -> None:
         """Run the already-authorized capture outside the UI thread."""

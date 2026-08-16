@@ -68,6 +68,25 @@ the UI a Picamera2 or libcamera object. A focused UI presentation adapter turns
 the final imaging `Photo` into a Qt pixmap; it does not perform image
 processing.
 
+## Booth event boundary
+
+`BoothController` publishes immutable `BoothEvent` values to explicitly
+registered `BoothEventListener` instances. Events currently cover session
+starts and completion, state changes, countdown ticks, captured photos, review
+readiness, and errors. The controller catches and logs listener exceptions so
+an optional presentation or diagnostics listener cannot corrupt the workflow.
+
+```mermaid
+flowchart LR
+    Controller["BoothController"] -->|"BoothEvent"| Listener["BoothEventListener"]
+    Listener --> UiAdapter["Qt event bridge"]
+    Listener --> Diagnostics["Future diagnostics"]
+```
+
+This Observer boundary lets the UI render application occurrences without
+introducing a PySide6 dependency into booth logic. The Qt bridge only forwards
+events through a signal; it does not decide state transitions or timing.
+
 ## Imaging pipeline and layouts
 
 The imaging subsystem separates two distinct operations:

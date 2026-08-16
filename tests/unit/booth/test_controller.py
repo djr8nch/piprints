@@ -9,6 +9,8 @@ import pytest
 from piprints.booth import (
     BoothCaptureError,
     BoothController,
+    BoothEvent,
+    BoothEventType,
     BoothSession,
     BoothState,
     BoothStateError,
@@ -29,6 +31,17 @@ def make_controller(camera: FakeCamera, capture_directory: Path) -> BoothControl
         layout=SinglePhotoLayout(),
         countdown=Countdown(3, delay=lambda _: None),
     )
+
+
+class RecordingListener:
+    """Record application events without requiring a presentation framework."""
+
+    def __init__(self) -> None:
+        self.events: list[BoothEvent] = []
+
+    def on_booth_event(self, event: BoothEvent) -> None:
+        """Store the event in publication order."""
+        self.events.append(event)
 
 
 def test_controller_starts_idle(tmp_path: Path) -> None:
@@ -72,7 +85,7 @@ def test_successful_capture_transitions_to_review(tmp_path: Path) -> None:
 
     controller.start_countdown()
     assert controller.state is BoothState.COUNTDOWN
-    controller.run_countdown(lambda _: None)
+    controller.run_countdown()
     assert controller.state is BoothState.CAPTURING
 
     captured_image = controller.capture()
@@ -87,20 +100,96 @@ def test_successful_capture_transitions_to_review(tmp_path: Path) -> None:
 def test_countdown_execution_moves_the_controller_to_capturing(tmp_path: Path) -> None:
     """Countdown completion authorizes capture without performing it itself."""
     controller = make_controller(FakeCamera(), tmp_path / "captures")
-    ticks: list[int] = []
+    listener = RecordingListener()
+    controller.add_event_listener(listener)
 
     controller.start_countdown()
-    controller.run_countdown(ticks.append)
+    controller.run_countdown()
 
-    assert ticks == [3, 2, 1]
+    assert [
+        event.countdown_value
+        for event in listener.events
+        if event.event_type is BoothEventType.COUNTDOWN_TICK
+    ] == [3, 2, 1]
     assert controller.state is BoothState.CAPTURING
+
+
+def test_controller_publishes_lifecycle_events_in_workflow_order(
+    tmp_path: Path,
+) -> None:
+    """Listeners observe workflow changes without importing any UI framework."""
+    listener = RecordingListener()
+    controller = make_controller(FakeCamera(), tmp_path / "captures")
+    controller.add_event_listener(listener)
+
+    controller.start_countdown()
+    controller.run_countdown()
+    controller.capture()
+
+    assert [event.event_type for event in listener.events] == [
+        BoothEventType.SESSION_STARTED,
+        BoothEventType.STATE_CHANGED,
+        BoothEventType.STATE_CHANGED,
+        BoothEventType.COUNTDOWN_TICK,
+        BoothEventType.COUNTDOWN_TICK,
+        BoothEventType.COUNTDOWN_TICK,
+        BoothEventType.STATE_CHANGED,
+        BoothEventType.PHOTO_CAPTURED,
+        BoothEventType.STATE_CHANGED,
+        BoothEventType.STATE_CHANGED,
+        BoothEventType.REVIEW_READY,
+    ]
+    state_events = [
+        event
+        for event in listener.events
+        if event.event_type is BoothEventType.STATE_CHANGED
+    ]
+    assert [(event.previous_state, event.state) for event in state_events] == [
+        (BoothState.IDLE, BoothState.PREPARING),
+        (BoothState.PREPARING, BoothState.COUNTDOWN),
+        (BoothState.COUNTDOWN, BoothState.CAPTURING),
+        (BoothState.CAPTURING, BoothState.PROCESSING),
+        (BoothState.PROCESSING, BoothState.REVIEW),
+    ]
+
+
+def test_listener_failure_does_not_interrupt_the_booth_workflow(tmp_path: Path) -> None:
+    """A faulty observer is isolated from the controller's state transitions."""
+    class FailingListener:
+        def on_booth_event(self, event: BoothEvent) -> None:
+            raise RuntimeError("listener unavailable")
+
+    recording_listener = RecordingListener()
+    controller = make_controller(FakeCamera(), tmp_path / "captures")
+    controller.add_event_listener(FailingListener())
+    controller.add_event_listener(recording_listener)
+
+    controller.begin_session()
+
+    assert controller.state is BoothState.PREPARING
+    assert [event.event_type for event in recording_listener.events] == [
+        BoothEventType.SESSION_STARTED,
+        BoothEventType.STATE_CHANGED,
+    ]
+
+
+def test_listener_is_not_registered_twice(tmp_path: Path) -> None:
+    """Repeated registration cannot create duplicate notifications."""
+    listener = RecordingListener()
+    controller = make_controller(FakeCamera(), tmp_path / "captures")
+
+    controller.add_event_listener(listener)
+    controller.add_event_listener(listener)
+    controller.begin_session()
+
+    assert len(listener.events) == 2
 
 
 def test_completed_session_can_be_finished_and_return_to_idle(tmp_path: Path) -> None:
     """A reviewed result remains available until the lifecycle is finished."""
     controller = make_controller(FakeCamera(), tmp_path / "captures")
     controller.start_countdown()
-    controller.run_countdown(lambda _: None)
+    controller.run_countdown()
     controller.capture()
 
     controller.complete_session()
@@ -137,7 +226,7 @@ def test_retake_returns_to_idle_preview(tmp_path: Path) -> None:
     """Retake clears the reviewed image and makes another capture possible."""
     controller = make_controller(FakeCamera(), tmp_path / "captures")
     controller.start_countdown()
-    controller.run_countdown(lambda _: None)
+    controller.run_countdown()
     controller.capture()
 
     controller.retake()
@@ -162,7 +251,7 @@ def test_capture_failure_returns_to_idle_and_preserves_cause(tmp_path: Path) -> 
         FakeCamera(capture_error=camera_error), tmp_path / "captures"
     )
     controller.start_countdown()
-    controller.run_countdown(lambda _: None)
+    controller.run_countdown()
 
     with pytest.raises(BoothCaptureError) as error_info:
         controller.capture()
@@ -180,7 +269,7 @@ def test_capture_workflow_can_be_repeated(tmp_path: Path) -> None:
 
     for _ in range(2):
         controller.start_countdown()
-        controller.run_countdown(lambda _: None)
+        controller.run_countdown()
         controller.capture()
         controller.retake()
 
@@ -228,7 +317,7 @@ def test_capture_processes_photo_and_uses_selected_layout(tmp_path: Path) -> Non
     )
 
     controller.start_countdown()
-    controller.run_countdown(lambda _: None)
+    controller.run_countdown()
     final_photo = controller.capture()
 
     assert len(operation.photos) == 1
@@ -264,7 +353,7 @@ def test_controller_collects_a_multi_photo_session_before_review(
     )
 
     controller.start_countdown()
-    controller.run_countdown(lambda _: None)
+    controller.run_countdown()
     assert controller.capture() is None
     assert controller.state is BoothState.PREPARING
     assert controller.session is not None
@@ -273,7 +362,7 @@ def test_controller_collects_a_multi_photo_session_before_review(
     assert layout.photos is None
 
     controller.start_countdown()
-    controller.run_countdown(lambda _: None)
+    controller.run_countdown()
     final_photo = controller.capture()
 
     assert controller.state is BoothState.REVIEW
