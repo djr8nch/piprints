@@ -146,6 +146,15 @@ class BoothScreen(QWidget):
             if not self._capture_worker.wait(5000):
                 logger.warning("Booth capture worker did not stop within five seconds")
 
+    def reset_presentation(self) -> None:
+        """Clear session-specific presentation before the next idle screen."""
+        self._review_pixmap = None
+        self._review_label.clear()
+        self._countdown_label.clear()
+        self._progress_label.clear()
+        self._take_photo_button.setEnabled(True)
+        self._pages.setCurrentIndex(0)
+
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Scale the reviewed photo as the window size changes."""
         self._update_review_pixmap()
@@ -181,11 +190,8 @@ class BoothScreen(QWidget):
         self._capture_worker.start()
 
     def _recover_from_countdown_failure(self, message: str) -> None:
-        """Restore controls if the application countdown cannot finish."""
+        """Return to the clean idle presentation after a countdown failure."""
         self._controller.reset_session()
-        self._countdown_label.setText(f"Countdown failed\n{message}")
-        self._take_photo_button.setEnabled(True)
-        self._preview.start()
 
     def _countdown_finished(self) -> None:
         """Release a finished countdown worker."""
@@ -212,12 +218,8 @@ class BoothScreen(QWidget):
         self._update_review_pixmap()
 
     def _recover_from_capture_failure(self, message: str) -> None:
-        """Return to idle preview after a failed camera capture."""
+        """Return to the clean idle presentation after a failed capture."""
         self._controller.reset_session()
-        self._countdown_label.setText(f"Capture failed\n{message}")
-        self._take_photo_button.setEnabled(True)
-        self._update_progress()
-        self._preview.start()
 
     def _capture_worker_finished(self) -> None:
         """Release the completed worker reference before another capture."""
@@ -228,13 +230,6 @@ class BoothScreen(QWidget):
     def _retake(self) -> None:
         """Return from review to idle preview for another capture."""
         self._controller.retake()
-        self._review_pixmap = None
-        self._review_label.clear()
-        self._countdown_label.clear()
-        self._take_photo_button.setEnabled(True)
-        self._update_progress()
-        self._pages.setCurrentIndex(0)
-        self._preview.start()
 
     def _update_progress(self) -> None:
         """Render progress from the controller-owned capture session."""
