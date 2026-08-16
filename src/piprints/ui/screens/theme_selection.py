@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
 )
 
 from piprints.themes import ThemeOption
+from piprints.ui.styling.metrics import METRICS
+from piprints.ui.styling.widgets import ButtonRole, apply_button_role
 
 
 class ThemeSelectionScreen(QWidget):
@@ -38,10 +40,10 @@ class ThemeSelectionScreen(QWidget):
         title = QLabel("Choose your theme")
         title.setAccessibleName("Theme selection")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 30px; font-weight: bold;")
+        title.setProperty("styleRole", "screenTitle")
 
         cards = QHBoxLayout()
-        cards.setSpacing(16)
+        cards.setSpacing(METRICS.spacing_medium)
         cards.addStretch(1)
         for option in options:
             cards.addWidget(self._create_card(option), stretch=1)
@@ -54,15 +56,12 @@ class ThemeSelectionScreen(QWidget):
             "Return to layout selection without starting."
         )
         back_button.setMinimumSize(180, 72)
-        back_button.setStyleSheet(
-            "QPushButton { font-size: 24px; padding: 12px 32px; }"
-            "QPushButton:focus { border: 3px solid #1a73e8; }"
-        )
+        apply_button_role(back_button, ButtonRole.QUIET)
         back_button.clicked.connect(cancel)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 24, 28, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(28, 20, 28, 16)
+        layout.setSpacing(METRICS.spacing_medium)
         layout.addWidget(title)
         layout.addLayout(cards, stretch=1)
         layout.addWidget(back_button, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -82,12 +81,8 @@ class ThemeSelectionScreen(QWidget):
         button.setMinimumSize(300, 260)
         button.setMaximumWidth(480)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        button.setStyleSheet(
-            "QPushButton { font-size: 22px; font-weight: bold; padding: 12px; }"
-            "QPushButton:pressed { background-color: #b8b8b8; }"
-            "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
-            "QPushButton:focus { border: 3px solid #1a73e8; }"
-        )
+        button.setCheckable(True)
+        button.setProperty("selectionCard", True)
 
         content = QVBoxLayout(button)
         content.setContentsMargins(12, 12, 12, 12)
@@ -96,7 +91,7 @@ class ThemeSelectionScreen(QWidget):
         name = QLabel(option.name)
         name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         name.setWordWrap(True)
-        name.setStyleSheet("font-size: 22px; font-weight: bold;")
+        name.setProperty("styleRole", "screenTitle")
         content.addWidget(name)
         button.clicked.connect(
             lambda _checked=False, identifier=option.identifier: self._select(
@@ -111,9 +106,8 @@ class ThemeSelectionScreen(QWidget):
         preview = QLabel("Preview unavailable")
         preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         preview.setMinimumHeight(150)
-        preview.setStyleSheet(
-            "background-color: #dddddd; color: #555555; font-size: 18px;"
-        )
+        preview.setProperty("styleRole", "secondaryText")
+        preview.setProperty("previewPlaceholder", True)
         if option.preview_path is not None and option.preview_path.is_file():
             pixmap = QPixmap(str(option.preview_path))
             if not pixmap.isNull():

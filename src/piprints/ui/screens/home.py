@@ -5,7 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+
+from piprints.ui.styling import logo_path
+from piprints.ui.styling.metrics import METRICS
+from piprints.ui.styling.widgets import ButtonRole, apply_button_role
 
 
 class HomeScreen(QWidget):
@@ -19,17 +24,31 @@ class HomeScreen(QWidget):
         super().__init__()
         self._show_layout_selection = show_layout_selection
 
+        self._logo_label = QLabel()
+        self._logo_label.setAccessibleName("PiPrints logo")
+        self._logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo = QPixmap(str(logo_path()))
+        if not logo.isNull():
+            self._logo_label.setPixmap(
+                logo.scaled(
+                    190,
+                    190,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+
         self._title_label = QLabel("PiPrints")
         self._title_label.setObjectName("homeTitle")
         self._title_label.setAccessibleName("PiPrints home")
         self._title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._title_label.setStyleSheet("font-size: 44px; font-weight: bold;")
+        self._title_label.setProperty("styleRole", "heroTitle")
 
         self._instruction_label = QLabel("Tap Start to choose your layout and theme")
         self._instruction_label.setAccessibleName("Start instructions")
         self._instruction_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._instruction_label.setWordWrap(True)
-        self._instruction_label.setStyleSheet("font-size: 20px;")
+        self._instruction_label.setProperty("styleRole", "secondaryText")
 
         self._start_button = QPushButton("Start")
         self._start_button.setObjectName("startButton")
@@ -41,23 +60,19 @@ class HomeScreen(QWidget):
         self._start_button.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
         )
-        self._start_button.setStyleSheet(
-            "QPushButton { font-size: 32px; font-weight: bold; padding: 16px 48px; }"
-            "QPushButton:pressed { background-color: #b8b8b8; }"
-            "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
-            "QPushButton:focus { border: 3px solid #1a73e8; }"
-        )
+        apply_button_role(self._start_button, ButtonRole.PRIMARY)
         self._start_button.clicked.connect(self._request_session_start)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(48, 36, 48, 36)
-        layout.setSpacing(20)
-        layout.addStretch(2)
+        layout.setContentsMargins(48, 20, 48, 20)
+        layout.setSpacing(METRICS.spacing_medium)
+        layout.addStretch(1)
+        layout.addWidget(self._logo_label)
         layout.addWidget(self._title_label)
         layout.addWidget(self._instruction_label)
-        layout.addSpacing(16)
+        layout.addSpacing(METRICS.spacing_small)
         layout.addWidget(self._start_button, alignment=Qt.AlignmentFlag.AlignHCenter)
-        layout.addStretch(3)
+        layout.addStretch(1)
 
     def reset_presentation(self) -> None:
         """Restore the idle action after a workflow returns to the home screen."""

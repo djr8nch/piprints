@@ -33,6 +33,7 @@ from piprints.storage import FilesystemPhotoStorage, PhotoStorage
 from piprints.themes import ThemeCatalog, ThemeOption
 from piprints.ui import QtEventBridge
 from piprints.ui.screens.main_window import MainWindow
+from piprints.ui.styling import apply_default_style
 
 _PRIMUZ_MC206H_PRINTABLE_WIDTH_DOTS = 384
 _DEFAULT_PRIMUZ_USB_DEVICE_PATH = Path("/dev/usb/lp0")
@@ -44,10 +45,13 @@ def create_application(arguments: Sequence[str] | None = None) -> QApplication:
     """Create the Qt application shared by all PiPrints UI components."""
     existing_application = QApplication.instance()
     if existing_application is not None:
+        apply_default_style(existing_application)
         return existing_application
 
     application_arguments = list(arguments) if arguments is not None else sys.argv
-    return QApplication(application_arguments)
+    application = QApplication(application_arguments)
+    apply_default_style(application)
+    return application
 
 
 def create_camera() -> Camera:

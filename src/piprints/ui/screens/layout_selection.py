@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
 )
 
 from piprints.booth import LayoutOption
+from piprints.ui.styling.metrics import METRICS
+from piprints.ui.styling.widgets import ButtonRole, apply_button_role
 
 
 class LayoutSelectionScreen(QWidget):
@@ -34,10 +36,10 @@ class LayoutSelectionScreen(QWidget):
         title = QLabel("Choose your layout")
         title.setAccessibleName("Layout selection")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 30px; font-weight: bold;")
+        title.setProperty("styleRole", "screenTitle")
 
         cards = QHBoxLayout()
-        cards.setSpacing(16)
+        cards.setSpacing(METRICS.spacing_medium)
         for option in options:
             cards.addWidget(self._create_card(option), stretch=1)
 
@@ -46,15 +48,12 @@ class LayoutSelectionScreen(QWidget):
         back_button.setAccessibleName("Back to home")
         back_button.setAccessibleDescription("Cancel layout selection and return home.")
         back_button.setMinimumSize(180, 72)
-        back_button.setStyleSheet(
-            "QPushButton { font-size: 24px; padding: 12px 32px; }"
-            "QPushButton:focus { border: 3px solid #1a73e8; }"
-        )
+        apply_button_role(back_button, ButtonRole.QUIET)
         back_button.clicked.connect(cancel)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 24, 28, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(28, 20, 28, 16)
+        layout.setSpacing(METRICS.spacing_medium)
         layout.addWidget(title)
         layout.addLayout(cards, stretch=1)
         layout.addWidget(back_button, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -73,12 +72,8 @@ class LayoutSelectionScreen(QWidget):
         button.setAccessibleDescription(option.description)
         button.setMinimumHeight(260)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        button.setStyleSheet(
-            "QPushButton { font-size: 22px; font-weight: bold; padding: 12px; }"
-            "QPushButton:pressed { background-color: #b8b8b8; }"
-            "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
-            "QPushButton:focus { border: 3px solid #1a73e8; }"
-        )
+        button.setCheckable(True)
+        button.setProperty("selectionCard", True)
 
         content = QVBoxLayout(button)
         content.setContentsMargins(12, 12, 12, 12)
@@ -87,11 +82,11 @@ class LayoutSelectionScreen(QWidget):
         name = QLabel(option.name)
         name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         name.setWordWrap(True)
-        name.setStyleSheet("font-size: 20px; font-weight: bold;")
+        name.setProperty("styleRole", "screenTitle")
         content.addWidget(name)
         detail = QLabel(option.description)
         detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        detail.setStyleSheet("font-size: 17px;")
+        detail.setProperty("styleRole", "secondaryText")
         content.addWidget(detail)
         button.clicked.connect(
             lambda _checked=False, identifier=option.identifier: self._select(
@@ -111,9 +106,7 @@ class LayoutSelectionScreen(QWidget):
             for column in range(option.preview_columns):
                 cell = QLabel()
                 cell.setMinimumSize(18, 18)
-                cell.setStyleSheet(
-                    "background-color: #dddddd; border: 2px solid #555555;"
-                )
+                cell.setProperty("layoutPreviewCell", True)
                 grid.addWidget(cell, row, column)
         return preview
 

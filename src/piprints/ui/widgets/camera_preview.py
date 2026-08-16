@@ -79,7 +79,7 @@ class CameraPreviewWidget(QWidget):
         self._image_label.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
         )
-        self._image_label.setStyleSheet("background-color: black; color: white;")
+        self._image_label.setProperty("preview", True)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

@@ -28,6 +28,13 @@ from piprints.camera import Camera
 from piprints.imaging import Photo
 from piprints.ui.event_bridge import QtEventBridge
 from piprints.ui.photo_presentation import photo_to_pixmap
+from piprints.ui.styling.metrics import METRICS
+from piprints.ui.styling.widgets import (
+    ButtonRole,
+    StatusRole,
+    apply_button_role,
+    set_status,
+)
 from piprints.ui.widgets.camera_preview import CameraPreviewWidget
 from piprints.ui.widgets.countdown_presentation import CountdownPresentation
 from piprints.ui.widgets.processing_presentation import ProcessingPresentation
@@ -144,7 +151,7 @@ class BoothScreen(QWidget):
         self._progress_label = QLabel()
         self._progress_label.setAccessibleName("Capture progress")
         self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._progress_label.setStyleSheet("font-size: 22px; font-weight: bold;")
+        self._progress_label.setProperty("styleRole", "screenTitle")
         self._take_photo_button = QPushButton("Take Photo")
         self._take_photo_button.setObjectName("takePhotoButton")
         self._take_photo_button.setAccessibleName("Take photo")
@@ -152,12 +159,7 @@ class BoothScreen(QWidget):
             "Start the countdown for the next photo."
         )
         self._take_photo_button.setMinimumHeight(88)
-        self._take_photo_button.setStyleSheet(
-            "QPushButton { font-size: 30px; font-weight: bold; padding: 12px 36px; }"
-            "QPushButton:pressed { background-color: #b8b8b8; }"
-            "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
-            "QPushButton:focus { border: 3px solid #1a73e8; }"
-        )
+        apply_button_role(self._take_photo_button, ButtonRole.PRIMARY)
         self._take_photo_button.clicked.connect(self._start_countdown)
 
         preview_content = QWidget()
@@ -179,7 +181,7 @@ class BoothScreen(QWidget):
         self._review_label.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
         )
-        self._review_label.setStyleSheet("background-color: black;")
+        self._review_label.setProperty("preview", True)
         self._save_status_label = QLabel()
         self._save_status_label.setAlignment(
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
@@ -190,8 +192,8 @@ class BoothScreen(QWidget):
         )
         self._save_status_label.setAccessibleName("Save status")
         self._print_status_label.setAccessibleName("Print status")
-        self._save_status_label.setStyleSheet("font-size: 18px;")
-        self._print_status_label.setStyleSheet("font-size: 18px;")
+        self._save_status_label.setProperty("statusRole", StatusRole.NEUTRAL.value)
+        self._print_status_label.setProperty("statusRole", StatusRole.NEUTRAL.value)
         # Compatibility alias for existing presentation tests.
         self._review_status_label = self._print_status_label
         self._retake_button = QPushButton("Retake")
@@ -202,11 +204,7 @@ class BoothScreen(QWidget):
         )
         self._retake_button.clicked.connect(self._retake)
         self._retake_button.setMinimumSize(160, 76)
-        self._retake_button.setStyleSheet(
-            "QPushButton { font-size: 24px; font-weight: bold; }"
-            "QPushButton:pressed { background-color: #b8b8b8; }"
-            "QPushButton:focus { border: 3px solid #1a73e8; }"
-        )
+        apply_button_role(self._retake_button, ButtonRole.SECONDARY)
         self._print_button = QPushButton("Print")
         self._print_button.setObjectName("printButton")
         self._print_button.setAccessibleName("Print final photo")
@@ -214,12 +212,7 @@ class BoothScreen(QWidget):
             "Send the final photo to the configured printer."
         )
         self._print_button.setMinimumSize(136, 76)
-        self._print_button.setStyleSheet(
-            "QPushButton { font-size: 24px; font-weight: bold; }"
-            "QPushButton:pressed { background-color: #b8b8b8; }"
-            "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
-            "QPushButton:focus { border: 3px solid #1a73e8; }"
-        )
+        apply_button_role(self._print_button, ButtonRole.ACCENT)
         self._print_button.clicked.connect(self._print_review)
         self._done_button = QPushButton("Done")
         self._done_button.setObjectName("doneButton")
@@ -228,18 +221,18 @@ class BoothScreen(QWidget):
             "Save the final photo and return to the home screen."
         )
         self._done_button.setMinimumSize(220, 76)
-        self._done_button.setStyleSheet(
-            "QPushButton { font-size: 28px; font-weight: bold; }"
-            "QPushButton:pressed { background-color: #b8b8b8; }"
-            "QPushButton:disabled { color: #777777; background-color: #dddddd; }"
-            "QPushButton:focus { border: 3px solid #1a73e8; }"
-        )
+        apply_button_role(self._done_button, ButtonRole.PRIMARY)
         self._done_button.clicked.connect(self._finish_review)
 
         review_actions = QWidget()
         review_actions.setMinimumHeight(88)
         actions_layout = QHBoxLayout(review_actions)
-        actions_layout.setContentsMargins(20, 8, 20, 8)
+        actions_layout.setContentsMargins(
+            20,
+            METRICS.spacing_small,
+            20,
+            METRICS.spacing_small,
+        )
         actions_layout.setSpacing(12)
         review_status = QWidget()
         status_layout = QVBoxLayout(review_status)
@@ -404,7 +397,7 @@ class BoothScreen(QWidget):
         self._done_button.setEnabled(False)
         self._retake_button.setEnabled(False)
         if not self._controller.output_saved:
-            self._save_status_label.setText("Saving…")
+            set_status(self._save_status_label, "Saving…", StatusRole.NEUTRAL)
         self._completion_worker = _CompletionWorker(self._controller)
         self._completion_worker.completion_failed.connect(self._show_completion_error)
         self._completion_worker.finished.connect(self._completion_worker_finished)
@@ -412,7 +405,7 @@ class BoothScreen(QWidget):
 
     def _show_completion_error(self, _message: str) -> None:
         """Offer a retry without exposing storage implementation details."""
-        self._save_status_label.setText("Save failed")
+        set_status(self._save_status_label, "Save failed", StatusRole.ERROR)
         self._done_button.setEnabled(True)
         self._retake_button.setEnabled(True)
 
@@ -422,8 +415,8 @@ class BoothScreen(QWidget):
             return
         self._print_button.setEnabled(False)
         if not self._controller.output_saved:
-            self._save_status_label.setText("Saving…")
-        self._print_status_label.setText("Printing…")
+            set_status(self._save_status_label, "Saving…", StatusRole.NEUTRAL)
+        set_status(self._print_status_label, "Printing…", StatusRole.NEUTRAL)
         self._print_worker = _PrintWorker(self._controller)
         self._print_worker.print_failed.connect(self._show_print_failure)
         self._print_worker.finished.connect(self._print_worker_finished)
@@ -431,23 +424,23 @@ class BoothScreen(QWidget):
 
     def _show_print_success(self, _result: object) -> None:
         """Confirm a completed print while retaining the finished image."""
-        self._print_status_label.setText("✓ Printed")
+        set_status(self._print_status_label, "✓ Printed", StatusRole.SUCCESS)
         self._print_button.setEnabled(False)
 
     def _show_print_failure(self, _message: str) -> None:
         """Allow a failed print to be retried without losing the review photo."""
-        self._print_status_label.setText("Print failed")
+        set_status(self._print_status_label, "Print failed", StatusRole.ERROR)
         self._print_button.setEnabled(self._controller.printer_available)
 
     def _show_save_success(self, _output_path: object) -> None:
         """Show the confirmed digital output result without exposing its path."""
-        self._save_status_label.setText("✓ Saved")
+        set_status(self._save_status_label, "✓ Saved", StatusRole.SUCCESS)
 
     def _show_save_failure(self, _message: str) -> None:
         """Show a recoverable save failure without technical diagnostics."""
-        self._save_status_label.setText("Save failed")
+        set_status(self._save_status_label, "Save failed", StatusRole.ERROR)
         if self._print_status_label.text() == "Printing…":
-            self._print_status_label.clear()
+            set_status(self._print_status_label, "", StatusRole.NEUTRAL)
 
     def _print_worker_finished(self) -> None:
         """Release the completed print worker before another request."""
@@ -476,9 +469,11 @@ class BoothScreen(QWidget):
 
     def _reset_review_status(self) -> None:
         """Clear prior customer output feedback for a fresh review session."""
-        self._save_status_label.clear()
-        self._print_status_label.setText(
-            "" if self._controller.printer_available else "Printer unavailable"
+        set_status(self._save_status_label, "", StatusRole.NEUTRAL)
+        set_status(
+            self._print_status_label,
+            "" if self._controller.printer_available else "Printer unavailable",
+            StatusRole.NEUTRAL,
         )
 
     def _update_progress(self) -> None:

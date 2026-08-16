@@ -51,6 +51,23 @@ retains only the latest frame, and paints it from a Qt timer. The still
 capture is also performed by a short-lived Qt worker so the UI thread remains
 responsive.
 
+### Default UI styling
+
+The PySide6 presentation has one shared styling boundary at
+`piprints.ui.styling`. Its compact semantic palette and 800×480-oriented
+metrics are consumed through an application-level stylesheet and small helpers
+for button and status roles. The current default PiPrints identity uses Pastel
+Pink (`#FFE3FB`) and Pastel Mint (`#E6EFD7`) as restrained surfaces and accents;
+dark text, focus, disabled, and conventional error tokens are defined separately
+to preserve readability.
+
+Runtime logo files are packaged under `piprints.ui/assets/logos/`, so the
+application never depends on `docs/assets/`; documentation retains its own
+copies for README and docs rendering. This is a default visual identity, not a
+runtime theme system. User theme configuration, alternative palettes, font
+selection, overlays, and branding plugins remain deferred to the Themes &
+Branding milestone.
+
 ```mermaid
 flowchart TD
     Bootstrap["bootstrap.py<br/>composition root"]
@@ -275,7 +292,7 @@ behavior are documented in the [booth lifecycle](booth-lifecycle.md).
 | `printing` | Implemented: hardware-independent `Printer` contract, successful-submission `PrintResult`, and `PrintError`. Hardware-specific adapters are future work. |
 | `storage` | Implemented: `PhotoStorage` contract and filesystem persistence for completed final photos. The default runtime location is `photos/YYYY-MM-DD/` under the working directory. |
 | `themes` | Placeholder for future UI theming. |
-| `ui` | Implemented: PySide6 preview, booth screen, and top-level window. |
+| `ui` | Implemented: PySide6 preview, screens, top-level window, and centralized default styling/runtime visual assets. |
 | `utils` | Placeholder; no shared utility behavior is implemented yet. |
 
 ## Dependency rules

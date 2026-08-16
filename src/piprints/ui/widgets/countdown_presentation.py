@@ -28,13 +28,13 @@ class CountdownPresentation(QWidget):
         number_font.setPixelSize(240)
         number_font.setWeight(QFont.Weight.Bold)
         self._number_label.setFont(number_font)
-        self._number_label.setStyleSheet("color: white;")
+        self._number_label.setProperty("countdown", True)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._number_label)
 
-        self.setStyleSheet("background-color: rgba(0, 0, 0, 135);")
+        self.setProperty("countdownOverlay", True)
         self.hide()
 
     @property
