@@ -103,6 +103,13 @@ silently resizing, cropping, or changing the booth layout. Any printer-width
 resizing will be a separate, explicit preparation decision before encoding.
 Protocol framing and hardware transport remain future adapter responsibilities.
 
+`piprints.printing.thermal.PySerialTransport` is the infrastructure boundary
+for that future adapter. It opens configured raw serial connections, writes all
+bytes or raises `SerialTransportError`, and closes connections explicitly or
+through a context manager. Its `SerialTransportSettings` requires an injected
+device path and baud rate, with an optional timeout (one second by default);
+it does not assume a particular `/dev` device or printer model.
+
 The UI depends directly on the PiPrints-owned camera contract only for preview
 frames. Workflow commands travel through `BoothController`; neither path gives
 the UI a Picamera2 or libcamera object. A focused UI presentation adapter turns

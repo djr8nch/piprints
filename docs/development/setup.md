@@ -28,6 +28,11 @@ installs PiPrints in editable mode with its development dependencies.
 It uses `sudo` for the Raspberry Pi OS packages. Re-running the script keeps an
 existing virtual environment and reinstalls the editable project.
 
+Normal Python runtime dependencies, including `pyserial` for the future thermal
+printer serial transport, are declared in `pyproject.toml` and installed by the
+editable project installation. No printer-specific operating-system package is
+required for the current transport boundary.
+
 ## Why the virtual environment includes system packages
 
 The setup script creates `.venv` with `--system-site-packages`. Picamera2 and
