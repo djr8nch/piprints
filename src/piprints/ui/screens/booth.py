@@ -7,6 +7,7 @@ import logging
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QSizePolicy,
@@ -69,6 +70,25 @@ class _CountdownWorker(QThread):
             self.countdown_failed.emit(str(error))
 
 
+class _CompletionWorker(QThread):
+    """Persist a reviewed session without delaying Qt event handling."""
+
+    completion_failed = Signal(str)
+
+    def __init__(self, controller: BoothController) -> None:
+        super().__init__()
+        self._controller = controller
+
+    def run(self) -> None:
+        """Complete and finish the controller lifecycle for the reviewed photo."""
+        try:
+            self._controller.complete_session()
+            self._controller.finish_session()
+        except Exception as error:
+            logger.exception("Booth session completion failed")
+            self.completion_failed.emit(str(error))
+
+
 class BoothScreen(QWidget):
     """Render session workflow state and forward intent to the controller."""
 
@@ -82,6 +102,7 @@ class BoothScreen(QWidget):
         self._controller = controller
         self._capture_worker: _CaptureWorker | None = None
         self._countdown_worker: _CountdownWorker | None = None
+        self._completion_worker: _CompletionWorker | None = None
         self._review_pixmap: QPixmap | None = None
         self._is_stopping = False
         self._event_bridge = event_bridge
@@ -117,14 +138,33 @@ class BoothScreen(QWidget):
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
         )
         self._review_label.setStyleSheet("background-color: black;")
+        self._review_status_label = QLabel("Your photo is ready")
+        self._review_status_label.setAlignment(
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+        )
+        self._review_status_label.setStyleSheet("font-size: 20px;")
         self._retake_button = QPushButton("Retake")
         self._retake_button.clicked.connect(self._retake)
+        self._retake_button.setMinimumSize(128, 72)
+        self._done_button = QPushButton("Done")
+        self._done_button.setMinimumSize(220, 72)
+        self._done_button.setStyleSheet("font-size: 28px; font-weight: bold;")
+        self._done_button.clicked.connect(self._finish_review)
+
+        review_actions = QWidget()
+        review_actions.setMinimumHeight(88)
+        actions_layout = QHBoxLayout(review_actions)
+        actions_layout.setContentsMargins(20, 8, 20, 8)
+        actions_layout.setSpacing(12)
+        actions_layout.addWidget(self._review_status_label, stretch=1)
+        actions_layout.addWidget(self._retake_button)
+        actions_layout.addWidget(self._done_button)
 
         review_page = QWidget()
         review_layout = QVBoxLayout(review_page)
         review_layout.setContentsMargins(0, 0, 0, 0)
         review_layout.addWidget(self._review_label, stretch=1)
-        review_layout.addWidget(self._retake_button)
+        review_layout.addWidget(review_actions)
 
         self._processing_presentation = ProcessingPresentation()
 
@@ -156,11 +196,15 @@ class BoothScreen(QWidget):
         if self._capture_worker is not None and self._capture_worker.isRunning():
             if not self._capture_worker.wait(5000):
                 logger.warning("Booth capture worker did not stop within five seconds")
+        if self._completion_worker is not None and self._completion_worker.isRunning():
+            if not self._completion_worker.wait(5000):
+                logger.warning(
+                    "Booth completion worker did not stop within five seconds"
+                )
 
     def reset_presentation(self) -> None:
         """Clear session-specific presentation before the next idle screen."""
-        self._review_pixmap = None
-        self._review_label.clear()
+        self._clear_review_presentation()
         self._countdown_presentation.clear()
         self._progress_label.clear()
         self._take_photo_button.setEnabled(True)
@@ -196,7 +240,10 @@ class BoothScreen(QWidget):
             self._countdown_presentation.begin()
             return
         self._countdown_presentation.clear()
-        if state is BoothState.PROCESSING:
+        if state is BoothState.PREPARING:
+            self._clear_review_presentation()
+            self._pages.setCurrentIndex(0)
+        elif state is BoothState.PROCESSING:
             self._pages.setCurrentWidget(self._processing_presentation)
         elif state is BoothState.REVIEW:
             self._pages.setCurrentIndex(1)
@@ -240,6 +287,9 @@ class BoothScreen(QWidget):
             self._review_label.setText("Photo captured, but it could not be displayed.")
         else:
             self._review_label.setText("")
+        self._review_status_label.setText("Your photo is ready")
+        self._done_button.setEnabled(True)
+        self._retake_button.setEnabled(True)
         self._pages.setCurrentIndex(1)
         self._update_review_pixmap()
 
@@ -253,9 +303,39 @@ class BoothScreen(QWidget):
             self._capture_worker.deleteLater()
             self._capture_worker = None
 
+    def _finish_review(self) -> None:
+        """Ask the application to persist and close the reviewed session."""
+        self._done_button.setEnabled(False)
+        self._retake_button.setEnabled(False)
+        self._review_status_label.setText("Saving your photo…")
+        self._completion_worker = _CompletionWorker(self._controller)
+        self._completion_worker.completion_failed.connect(self._show_completion_error)
+        self._completion_worker.finished.connect(self._completion_worker_finished)
+        self._completion_worker.start()
+
+    def _show_completion_error(self, _message: str) -> None:
+        """Offer a retry without exposing storage implementation details."""
+        self._review_status_label.setText("We couldn't save your photo.")
+        self._done_button.setEnabled(True)
+        self._retake_button.setEnabled(True)
+
+    def _completion_worker_finished(self) -> None:
+        """Release the completed session worker."""
+        if self._completion_worker is not None:
+            self._completion_worker.deleteLater()
+            self._completion_worker = None
+
     def _retake(self) -> None:
         """Return from review to idle preview for another capture."""
         self._controller.retake()
+
+    def _clear_review_presentation(self) -> None:
+        """Discard completed-photo pixels and controls from the prior customer."""
+        self._review_pixmap = None
+        self._review_label.clear()
+        self._review_status_label.setText("Your photo is ready")
+        self._done_button.setEnabled(True)
+        self._retake_button.setEnabled(True)
 
     def _update_progress(self) -> None:
         """Render progress from the controller-owned capture session."""

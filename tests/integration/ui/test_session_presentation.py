@@ -9,6 +9,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PIL import Image
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
 from piprints.booth import (
@@ -26,6 +27,22 @@ from piprints.ui.photo_presentation import photo_to_pixmap
 from piprints.ui.screens.booth import BoothScreen
 from piprints.ui.widgets.countdown_presentation import CountdownPresentation
 from tests.fakes import FakeCamera
+
+
+class LifecycleRecorder:
+    """Record the controller lifecycle requested by the review presentation."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.session = None
+
+    def complete_session(self) -> None:
+        """Record persistent completion."""
+        self.calls.append("complete")
+
+    def finish_session(self) -> None:
+        """Record return to the idle lifecycle boundary."""
+        self.calls.append("finish")
 
 
 def make_controller(capture_directory: Path) -> BoothController:
@@ -141,4 +158,71 @@ def test_countdown_presentation_resets_without_owning_a_timing_timer(
     assert "QTimer" not in getsource(CountdownPresentation)
     assert "QTimer" not in getsource(BoothScreen)
     assert isinstance(controller._countdown, Countdown)
+    application.processEvents()
+
+
+def test_review_displays_the_final_layout_with_preserved_aspect_ratio(
+    tmp_path: Path,
+) -> None:
+    """The review screen receives the composed output, never a raw capture."""
+    application = QApplication.instance() or QApplication(["piprints"])
+    controller = make_controller(tmp_path / "captures")
+    event_bridge = QtEventBridge()
+    screen = BoothScreen(FakeCamera(), controller, event_bridge)
+    screen.resize(800, 480)
+    screen.show()
+    application.processEvents()
+
+    raw_capture = Photo(Image.new("RGB", (30, 30), "red"))
+    final_layout = Photo(Image.new("RGB", (240, 120), "blue"))
+    assert raw_capture != final_layout
+    event_bridge.on_booth_event(
+        BoothEvent(
+            event_type=BoothEventType.REVIEW_READY,
+            state=BoothState.REVIEW,
+            photo=final_layout,
+        )
+    )
+    application.processEvents()
+
+    displayed = screen._review_label.pixmap()
+    assert displayed is not None
+    assert screen._review_pixmap is not None
+    assert screen._review_pixmap.toImage().pixelColor(0, 0) == QColor("blue")
+    assert displayed.width() * 120 == displayed.height() * 240
+    assert screen._review_label.height() > screen.height() // 2
+    assert screen._done_button.minimumWidth() >= 220
+    assert screen._done_button.minimumHeight() >= 72
+
+    event_bridge.on_booth_event(
+        BoothEvent(
+            event_type=BoothEventType.STATE_CHANGED,
+            previous_state=BoothState.IDLE,
+            state=BoothState.PREPARING,
+        )
+    )
+    assert screen._review_pixmap is None
+    assert screen._review_label.pixmap().isNull()
+
+    screen.reset_presentation()
+    assert screen._review_pixmap is None
+    assert screen._review_label.pixmap().isNull()
+    screen.close()
+    application.processEvents()
+
+
+def test_done_requests_the_controller_completion_lifecycle() -> None:
+    """The review widget delegates completion rather than resetting controller state."""
+    application = QApplication.instance() or QApplication(["piprints"])
+    controller = LifecycleRecorder()
+    event_bridge = QtEventBridge()
+    screen = BoothScreen(FakeCamera(), controller, event_bridge)  # type: ignore[arg-type]
+    screen._show_review(Photo(Image.new("RGB", (2, 2), "blue")))
+
+    screen._done_button.click()
+    assert screen._completion_worker is not None
+    assert screen._completion_worker.wait(1000)
+    assert controller.calls == ["complete", "finish"]
+
+    screen.close()
     application.processEvents()
