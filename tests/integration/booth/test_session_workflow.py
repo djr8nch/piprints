@@ -17,6 +17,7 @@ from piprints.booth import (
 from piprints.imaging import PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import SinglePhotoLayout
 from piprints.imaging.operations import ResizeOperation
+from piprints.storage import FilesystemPhotoStorage
 from tests.fakes import FakeCamera
 
 
@@ -43,6 +44,7 @@ def make_controller(
         photo_loader=PhotoLoader(),
         photo_pipeline=PhotoPipeline([ResizeOperation(4, 6)]),
         layout=SinglePhotoLayout(),
+        photo_storage=FilesystemPhotoStorage(capture_directory.parent / "photos"),
         countdown=Countdown(3, delay=lambda _: None),
         listeners=[listener],
     )

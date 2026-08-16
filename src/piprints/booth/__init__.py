@@ -4,6 +4,7 @@ from piprints.booth.controller import (
     BoothCaptureError,
     BoothController,
     BoothStateError,
+    BoothStorageError,
 )
 from piprints.booth.countdown import Countdown
 from piprints.booth.events import BoothEvent, BoothEventListener, BoothEventType
@@ -20,5 +21,6 @@ __all__ = [
     "BoothSessionError",
     "BoothState",
     "BoothStateError",
+    "BoothStorageError",
     "Countdown",
 ]

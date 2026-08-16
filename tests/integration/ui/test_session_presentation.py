@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication
 from piprints.booth import BoothController, Countdown
 from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import FourPhotoLayout
+from piprints.storage import FilesystemPhotoStorage
 from piprints.ui.photo_presentation import photo_to_pixmap
 from piprints.ui.screens.booth import BoothScreen
 from tests.fakes import FakeCamera
@@ -26,6 +27,7 @@ def make_controller(capture_directory: Path) -> BoothController:
         photo_loader=PhotoLoader(),
         photo_pipeline=PhotoPipeline(),
         layout=FourPhotoLayout(),
+        photo_storage=FilesystemPhotoStorage(capture_directory.parent / "photos"),
         countdown=Countdown(3, delay=lambda _: None),
     )
 

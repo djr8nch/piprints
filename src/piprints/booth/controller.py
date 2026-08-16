@@ -14,6 +14,7 @@ from piprints.booth.state import BoothState
 from piprints.camera import Camera
 from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import Layout
+from piprints.storage import PhotoStorage, StorageError
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,10 @@ class BoothCaptureError(RuntimeError):
 
 class BoothStateError(RuntimeError):
     """Raised when an operation is not valid in the current booth state."""
+
+
+class BoothStorageError(RuntimeError):
+    """Raised when the completed session output cannot be persisted."""
 
 
 class BoothController:
@@ -49,6 +54,7 @@ class BoothController:
         photo_loader: PhotoLoader,
         photo_pipeline: PhotoPipeline,
         layout: Layout,
+        photo_storage: PhotoStorage,
         countdown_duration_seconds: int = 3,
         countdown: Countdown | None = None,
         listeners: Iterable[BoothEventListener] = (),
@@ -58,6 +64,7 @@ class BoothController:
         self._photo_loader = photo_loader
         self._photo_pipeline = photo_pipeline
         self._layout = layout
+        self._photo_storage = photo_storage
         self._state = BoothState.IDLE
         self._session: BoothSession | None = None
         self._countdown = countdown or Countdown(countdown_duration_seconds)
@@ -102,11 +109,24 @@ class BoothController:
         return self._session
 
     def complete_session(self) -> None:
-        """Mark a reviewed session complete pending its final reset."""
+        """Persist the reviewed output, then mark its session complete.
+
+        A persistence failure leaves the session in review so the caller can
+        report the failure and retry without recapturing the photos.
+        """
         self._require_state(BoothState.REVIEW)
+        session = self._require_session()
+        final_photo = session.final_photo
+        if final_photo is None:
+            raise BoothStateError("A reviewed session requires a final photo.")
+        try:
+            saved_path = self._photo_storage.save(final_photo, session_id=session.id)
+        except StorageError as error:
+            logger.exception("Booth session output could not be saved: %s", session.id)
+            raise BoothStorageError("Unable to save the completed photo.") from error
         self._transition_to(BoothState.COMPLETE)
         self._publish(BoothEventType.SESSION_COMPLETED)
-        logger.info("Booth session completed: %s", self._require_session().id)
+        logger.info("Booth session completed: %s saved to %s", session.id, saved_path)
 
     def finish_session(self) -> None:
         """Clear a completed session and return to idle."""

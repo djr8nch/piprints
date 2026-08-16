@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from piprints.booth import (
     BoothCaptureError,
@@ -18,6 +19,7 @@ from piprints.booth import (
 )
 from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import Layout, SinglePhotoLayout
+from piprints.storage import FilesystemPhotoStorage
 from tests.fakes import FakeCamera
 
 
@@ -29,6 +31,7 @@ def make_controller(camera: FakeCamera, capture_directory: Path) -> BoothControl
         photo_loader=PhotoLoader(),
         photo_pipeline=PhotoPipeline(),
         layout=SinglePhotoLayout(),
+        photo_storage=FilesystemPhotoStorage(capture_directory.parent / "photos"),
         countdown=Countdown(3, delay=lambda _: None),
     )
 
@@ -205,6 +208,23 @@ def test_completed_session_can_be_finished_and_return_to_idle(tmp_path: Path) ->
     assert controller.last_capture is None
 
 
+def test_completing_a_session_persists_its_final_photo(tmp_path: Path) -> None:
+    """Workflow completion delegates the final image to the storage boundary."""
+    photo_directory = tmp_path / "photos"
+    controller = make_controller(FakeCamera(), tmp_path / "captures")
+    controller.start_countdown()
+    controller.run_countdown()
+    final_photo = controller.capture()
+
+    controller.complete_session()
+
+    saved_paths = list(photo_directory.glob("*/*.png"))
+    assert len(saved_paths) == 1
+    assert final_photo is not None
+    with Image.open(saved_paths[0]) as saved_image:
+        assert saved_image.size == final_photo.image.size
+
+
 def test_capture_before_countdown_raises_state_error(tmp_path: Path) -> None:
     """A still capture is not valid while the booth is displaying preview."""
     controller = make_controller(FakeCamera(), tmp_path / "captures")
@@ -326,6 +346,7 @@ def test_capture_processes_photo_and_uses_selected_layout(tmp_path: Path) -> Non
         photo_loader=PhotoLoader(),
         photo_pipeline=PhotoPipeline([operation]),
         layout=layout,
+        photo_storage=FilesystemPhotoStorage(tmp_path / "photos"),
     )
 
     controller.start_countdown()
@@ -362,6 +383,7 @@ def test_controller_collects_a_multi_photo_session_before_review(
         photo_loader=PhotoLoader(),
         photo_pipeline=PhotoPipeline(),
         layout=layout,
+        photo_storage=FilesystemPhotoStorage(tmp_path / "photos"),
     )
 
     controller.start_countdown()

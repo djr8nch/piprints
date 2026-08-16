@@ -33,9 +33,10 @@ Live preview → countdown → capture → session progress → final layout rev
 ```
 
 Captured runtime images are written to the ignored `captures/` directory. This
-alpha includes four-photo grid and classic strip composition. It does not yet
-implement printing, persistent storage, themes, sharing, GPIO input, or video
-recording.
+alpha includes four-photo grid and classic strip composition. When a completed
+session is finalized by the application, its final layout is saved as a PNG in
+`photos/YYYY-MM-DD/` under the working directory. It does not yet implement
+printing, themes, sharing, GPIO input, or video recording.
 
 ## Quick start
 

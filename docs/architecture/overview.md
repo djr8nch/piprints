@@ -11,16 +11,20 @@ turning the application into a hardware-specific UI.
 ## Current implementation
 
 The alpha implements application startup, a multi-photo booth workflow,
-Raspberry Pi camera control, composable imaging, and a PySide6 interface. `app.py` starts
+Raspberry Pi camera control, composable imaging, digital filesystem persistence,
+and a PySide6 interface. `app.py` starts
 the application and owns process-level camera cleanup. `bootstrap.py` is the
 composition root: it creates `PiCamera`, `PhotoPipeline`, `FourPhotoLayout`,
-`BoothController`, and `MainWindow`, then injects the dependencies they need.
+`FilesystemPhotoStorage`, `BoothController`, and `MainWindow`, then injects
+the dependencies they need.
 
 `BoothController` owns lifecycle transitions; `BoothState` represents the
 current lifecycle state. The controller also owns one active `BoothSession`,
 created with the selected layout's `required_photos`. It adds each processed
 capture, composes only after the session is complete, and coordinates imaging
-collaborators without decoding or transforming pixels.
+collaborators without decoding or transforming pixels. On session completion,
+it asks an injected `PhotoStorage` to persist the final photo; it never builds
+output paths itself.
 
 `BoothSession` is the booth-layer record for one interaction's identity,
 layout-derived capture requirement, and image artifacts. It holds ordered
@@ -43,6 +47,7 @@ flowchart TD
     Bootstrap --> CameraImpl["PiCamera"]
     Bootstrap --> Pipeline["PhotoPipeline"]
     Bootstrap --> Layout["FourPhotoLayout"]
+    Bootstrap --> Storage["FilesystemPhotoStorage"]
     Bootstrap --> Booth["BoothController"]
     Bootstrap --> Window["MainWindow / BoothScreen"]
 
@@ -56,6 +61,7 @@ flowchart TD
     BoothSession -->|complete sequence| Layout
     BoothSession --> CapturedPhotos["Photo, Photo, ..."]
     Layout -->|final photo| BoothSession
+    Booth -->|final photo + session ID| Storage
     BoothSession -->|final photo| Window
     Window -->|preview frames| CameraContract
     CameraImpl --> CameraContract
@@ -200,7 +206,7 @@ behavior are documented in the [booth lifecycle](booth-lifecycle.md).
 | `imaging` | Implemented: in-memory `Photo`, path loader, per-photo pipeline, deterministic framing and crop/resize operations, layout contracts, and single/grid/strip layouts. It is independent of UI, camera hardware, storage, and printing. |
 | `input` | Placeholder for future user and hardware input integration. |
 | `printing` | Placeholder for future printer abstractions and implementations. |
-| `storage` | Placeholder for persistent captured-photo storage; not used by current runtime captures. |
+| `storage` | Implemented: `PhotoStorage` contract and filesystem persistence for completed final photos. The default runtime location is `photos/YYYY-MM-DD/` under the working directory. |
 | `themes` | Placeholder for future UI theming. |
 | `ui` | Implemented: PySide6 preview, booth screen, and top-level window. |
 | `utils` | Placeholder; no shared utility behavior is implemented yet. |
@@ -220,6 +226,7 @@ Allowed:
 ```text
 BoothController → Camera
 BoothController → BoothSession + PhotoLoader + PhotoPipeline + Layout
+BoothController → PhotoStorage
 CameraPreviewWidget → Camera / PreviewFrame
 bootstrap.py → PiCamera + BoothController + MainWindow
 ```
