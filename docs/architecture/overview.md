@@ -39,6 +39,12 @@ The UI uses PySide6. The IDLE home screen leads to a layout-selection screen,
 which renders only `LayoutCatalog` descriptors and asks `BoothController` to
 begin a session with the selected identifier. This keeps concrete composition
 strategies in the application/bootstrap boundary rather than the UI.
+After choosing a layout, the user chooses a theme from `ThemeCatalog` metadata.
+Only currently usable options are exposed; the selected identifier is stored in
+`BoothSession` when the controller starts the session. `ThemeSelectionScreen`
+may display a supplied preview file, but it does not compose images, apply
+watermarks or overlays, choose fonts, or define colours. Those rendering and
+branding concerns remain owned by the future Themes & Branding milestone.
 `BoothScreen` renders the countdown, review, and retake controls.
 `CameraPreviewWidget` obtains `PreviewFrame` values on a worker thread,
 retains only the latest frame, and paints it from a Qt timer. The still

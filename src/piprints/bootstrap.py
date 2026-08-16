@@ -23,6 +23,7 @@ from piprints.imaging.layouts import (
 )
 from piprints.printing import Printer
 from piprints.storage import FilesystemPhotoStorage, PhotoStorage
+from piprints.themes import ThemeCatalog, ThemeOption
 from piprints.ui import QtEventBridge
 from piprints.ui.screens.main_window import MainWindow
 
@@ -64,6 +65,16 @@ def create_layout_catalog() -> LayoutCatalog:
     )
 
 
+def create_theme_catalog() -> ThemeCatalog:
+    """Create the theme choices currently usable by the application.
+
+    The neutral PiPrints presentation is the sole available theme today. A
+    future Themes & Branding milestone may add rendering strategies and assets
+    behind this metadata boundary without changing selection widgets.
+    """
+    return ThemeCatalog((ThemeOption("default", "PiPrints"),))
+
+
 def create_booth(
     camera: Camera,
     capture_directory: Path | None = None,
@@ -80,6 +91,7 @@ def create_booth(
         photo_pipeline=PhotoPipeline(),
         layout=FourPhotoLayout(),
         layout_catalog=create_layout_catalog(),
+        theme_catalog=create_theme_catalog(),
         photo_storage=photo_storage or create_photo_storage(),
         printer=printer,
         listeners=listeners,

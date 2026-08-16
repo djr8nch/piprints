@@ -28,6 +28,7 @@ from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import Layout
 from piprints.printing import Printer, PrintError, PrintResult
 from piprints.storage import PhotoStorage, StorageError
+from piprints.themes import ThemeCatalog, ThemeOption
 
 logger = logging.getLogger(__name__)
 
@@ -77,12 +78,16 @@ class BoothController:
         countdown: Countdown | None = None,
         listeners: Iterable[BoothEventListener] = (),
         layout_catalog: LayoutCatalog | None = None,
+        theme_catalog: ThemeCatalog | None = None,
     ) -> None:
         self._camera = camera
         self._capture_directory = capture_directory
         self._photo_loader = photo_loader
         self._photo_pipeline = photo_pipeline
         self._layout_catalog = layout_catalog or self._catalog_for_layout(layout)
+        self._theme_catalog = theme_catalog or ThemeCatalog(
+            (ThemeOption("default", "PiPrints"),)
+        )
         self._layout = layout
         self._photo_storage = photo_storage
         self._printer = printer
@@ -116,6 +121,11 @@ class BoothController:
         return self._layout_catalog.options
 
     @property
+    def available_themes(self) -> tuple[ThemeOption, ...]:
+        """Return application-level descriptors for usable theme choices."""
+        return self._theme_catalog.options
+
+    @property
     def printer_available(self) -> bool:
         """Return whether this booth has an application-configured printer."""
         return self._printer is not None
@@ -135,7 +145,11 @@ class BoothController:
         if listener in self._listeners:
             self._listeners.remove(listener)
 
-    def begin_session(self, layout_identifier: str | None = None) -> BoothSession:
+    def begin_session(
+        self,
+        layout_identifier: str | None = None,
+        theme_identifier: str | None = None,
+    ) -> BoothSession:
         """Create the active session and enter its preparation phase."""
         self._require_state(BoothState.IDLE)
         if self._session is not None:
@@ -143,6 +157,11 @@ class BoothController:
         selected_identifier = (
             layout_identifier or self._layout_catalog.default_identifier
         )
+        selected_theme_identifier = (
+            theme_identifier or self._theme_catalog.default_identifier
+        )
+        if not self._theme_catalog.contains(selected_theme_identifier):
+            raise BoothStateError(f"Unsupported theme: {selected_theme_identifier!r}.")
         try:
             self._layout = self._layout_catalog.create(selected_identifier)
         except ValueError as error:
@@ -150,6 +169,7 @@ class BoothController:
         self._session = BoothSession(
             self._layout.required_photos,
             layout_identifier=selected_identifier,
+            theme_identifier=selected_theme_identifier,
         )
         self._saved_output_path = None
         self._print_completed = False

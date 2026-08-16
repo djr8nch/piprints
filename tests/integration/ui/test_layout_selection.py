@@ -61,25 +61,32 @@ def test_currently_supported_layouts_fit_as_three_cards_at_800_by_480(
     application.processEvents()
 
 
-def test_selecting_a_layout_starts_the_matching_session_once(tmp_path: Path) -> None:
-    """A card selection records its ID and capture count in the workflow session."""
+def test_selecting_layout_then_theme_starts_the_matching_session_once(
+    tmp_path: Path,
+) -> None:
+    """Both choices are recorded by the workflow session, not the widgets."""
     application = QApplication.instance() or QApplication(["piprints"])
     window, controller = make_window(tmp_path)
 
     window._home_screen._start_button.click()
     strip_card = window._layout_selection_screen._buttons[2]
     strip_card.click()
+    assert window._pages.currentWidget() is window._theme_selection_screen
+
+    theme_card = window._theme_selection_screen._buttons[0]
+    theme_card.click()
     session = controller.session
-    strip_card.click()
+    theme_card.click()
 
     assert controller.state is BoothState.PREPARING
     assert controller.session is session
     assert session is not None
     assert session.layout_identifier == "strip"
+    assert session.theme_identifier == "default"
     assert session.target_photo_count == 4
     assert window._pages.currentWidget() is window._booth_screen
     assert all(
-        not button.isEnabled() for button in window._layout_selection_screen._buttons
+        not button.isEnabled() for button in window._theme_selection_screen._buttons
     )
 
     window.close()
