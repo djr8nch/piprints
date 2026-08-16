@@ -22,11 +22,12 @@ cd piprints
 ```
 
 The script updates apt metadata, installs `python3`, `python3-venv`, and
-`python3-picamera2`, creates `.venv` when it does not already exist, and
-installs PiPrints in editable mode with its development dependencies.
+`python3-picamera2`, then installs PiPrints in an editable virtual environment
+with its development dependencies. If an existing `.venv` does not expose
+system packages, the script recreates it so Picamera2 remains importable.
 
-It uses `sudo` for the Raspberry Pi OS packages. Re-running the script keeps an
-existing virtual environment and reinstalls the editable project.
+It uses `sudo` for the Raspberry Pi OS packages. Re-running the script keeps a
+compatible virtual environment and reinstalls the editable project.
 
 Normal Python runtime dependencies, including `pyserial` for the future thermal
 printer serial transport, are declared in `pyproject.toml` and installed by the

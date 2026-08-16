@@ -74,7 +74,8 @@ and inspect the physical lens/camera installation.
 
 Run `./scripts/install.sh` on the Raspberry Pi. It installs `python3-picamera2`
 through apt and creates `.venv` with `--system-site-packages`, which exposes
-that OS-managed package to the virtual environment. A conventional venv created
+that OS-managed package to the virtual environment. The setup script recreates
+an incompatible existing `.venv` automatically. A conventional venv created
 without that option may not see Picamera2.
 
 ### Camera is already in use

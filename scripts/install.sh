@@ -18,6 +18,10 @@ echo "Creating PiPrints virtual environment..."
 
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv --system-site-packages "$VENV_DIR"
+elif ! grep -qx "include-system-site-packages = true" "$VENV_DIR/pyvenv.cfg"; then
+    echo "Recreating virtual environment to expose Raspberry Pi OS packages..."
+    rm -rf "$VENV_DIR"
+    python3 -m venv --system-site-packages "$VENV_DIR"
 else
     echo "Virtual environment already exists."
 fi
