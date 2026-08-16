@@ -12,7 +12,7 @@ turning the application into a hardware-specific UI.
 
 The alpha implements application startup, a multi-photo booth workflow,
 Raspberry Pi camera control, composable imaging, digital filesystem persistence,
-and a PySide6 interface. `app.py` starts
+and a hardware-independent printer contract. `app.py` starts
 the application and owns process-level camera cleanup. `bootstrap.py` is the
 composition root: it creates `PiCamera`, `PhotoPipeline`, `FourPhotoLayout`,
 `FilesystemPhotoStorage`, `BoothController`, and `MainWindow`, then injects
@@ -66,6 +66,24 @@ flowchart TD
     Window -->|preview frames| CameraContract
     CameraImpl --> CameraContract
     CameraImpl --> Driver["Picamera2 / libcamera"]
+```
+
+## Printing boundary
+
+`piprints.printing.Printer` is the hardware-independent contract for physical
+output. It receives a fully prepared final `Photo` and returns a `PrintResult`
+when that photo has been accepted for printing. Future printer adapters may
+raise `PrintError` when submission fails. The contract has no serial, raster,
+or printer-model details, and it does not choose layouts or transform pixels.
+
+No printer adapter or booth workflow integration exists yet. When printing is
+introduced, application orchestration will depend on `Printer`, while a
+hardware-specific adapter will implement that contract:
+
+```mermaid
+flowchart BT
+    Booth["Booth / application"] --> Printer["Printer contract"]
+    Adapter["Hardware-specific printer adapter"] --> Printer
 ```
 
 The UI depends directly on the PiPrints-owned camera contract only for preview
@@ -205,7 +223,7 @@ behavior are documented in the [booth lifecycle](booth-lifecycle.md).
 | `config` | Placeholder for future runtime configuration. |
 | `imaging` | Implemented: in-memory `Photo`, path loader, per-photo pipeline, deterministic framing and crop/resize operations, layout contracts, and single/grid/strip layouts. It is independent of UI, camera hardware, storage, and printing. |
 | `input` | Placeholder for future user and hardware input integration. |
-| `printing` | Placeholder for future printer abstractions and implementations. |
+| `printing` | Implemented: hardware-independent `Printer` contract, successful-submission `PrintResult`, and `PrintError`. Hardware-specific adapters are future work. |
 | `storage` | Implemented: `PhotoStorage` contract and filesystem persistence for completed final photos. The default runtime location is `photos/YYYY-MM-DD/` under the working directory. |
 | `themes` | Placeholder for future UI theming. |
 | `ui` | Implemented: PySide6 preview, booth screen, and top-level window. |
@@ -227,6 +245,7 @@ Allowed:
 BoothController → Camera
 BoothController → BoothSession + PhotoLoader + PhotoPipeline + Layout
 BoothController → PhotoStorage
+Future booth/application orchestration → Printer
 CameraPreviewWidget → Camera / PreviewFrame
 bootstrap.py → PiCamera + BoothController + MainWindow
 ```
@@ -238,6 +257,7 @@ BoothScreen → Picamera2
 BoothController → QWidget
 Camera adapter → BoothScreen
 PhotoPipeline → Layout
+Printer adapter → BoothController
 ```
 
 ## Test boundaries
