@@ -14,6 +14,7 @@ from piprints.booth.state import BoothState
 from piprints.camera import Camera
 from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import Layout
+from piprints.printing import Printer, PrintError, PrintResult
 from piprints.storage import PhotoStorage, StorageError
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,10 @@ class BoothStateError(RuntimeError):
 
 class BoothStorageError(RuntimeError):
     """Raised when the completed session output cannot be persisted."""
+
+
+class BoothPrintError(RuntimeError):
+    """Raised when a saved completed session output cannot be printed."""
 
 
 class BoothController:
@@ -55,6 +60,7 @@ class BoothController:
         photo_pipeline: PhotoPipeline,
         layout: Layout,
         photo_storage: PhotoStorage,
+        printer: Printer | None = None,
         countdown_duration_seconds: int = 3,
         countdown: Countdown | None = None,
         listeners: Iterable[BoothEventListener] = (),
@@ -65,8 +71,10 @@ class BoothController:
         self._photo_pipeline = photo_pipeline
         self._layout = layout
         self._photo_storage = photo_storage
+        self._printer = printer
         self._state = BoothState.IDLE
         self._session: BoothSession | None = None
+        self._saved_output_path: Path | None = None
         self._countdown = countdown or Countdown(countdown_duration_seconds)
         self._listeners: list[BoothEventListener] = []
         for listener in listeners:
@@ -103,36 +111,66 @@ class BoothController:
         if self._session is not None:
             raise BoothStateError("Cannot begin a session while one is active.")
         self._session = BoothSession(self._layout.required_photos)
+        self._saved_output_path = None
         self._publish(BoothEventType.SESSION_STARTED)
         self._transition_to(BoothState.PREPARING)
         logger.info("Booth session started: %s", self._session.id)
         return self._session
 
     def complete_session(self) -> None:
-        """Persist the reviewed output, then mark its session complete.
+        """Persist and optionally print the reviewed output, then complete it.
 
         A persistence failure leaves the session in review so the caller can
-        report the failure and retry without recapturing the photos.
+        report the failure and retry without recapturing the photos. A printer
+        failure also leaves the session in review, retaining its saved output
+        so a retry does not save a duplicate file.
         """
         self._require_state(BoothState.REVIEW)
         session = self._require_session()
         final_photo = session.final_photo
         if final_photo is None:
             raise BoothStateError("A reviewed session requires a final photo.")
-        try:
-            saved_path = self._photo_storage.save(final_photo, session_id=session.id)
-        except StorageError as error:
-            logger.exception("Booth session output could not be saved: %s", session.id)
-            raise BoothStorageError("Unable to save the completed photo.") from error
+        saved_path = self._save_output(session, final_photo)
+        if self._printer is not None:
+            self._print_output(session, final_photo)
         self._transition_to(BoothState.COMPLETE)
         self._publish(BoothEventType.SESSION_COMPLETED)
         logger.info("Booth session completed: %s saved to %s", session.id, saved_path)
+
+    def _save_output(self, session: BoothSession, photo: Photo) -> Path:
+        """Persist the final photo once and return its saved location."""
+        if self._saved_output_path is not None:
+            return self._saved_output_path
+        try:
+            saved_path = self._photo_storage.save(photo, session_id=session.id)
+        except StorageError as error:
+            logger.exception("Booth session output could not be saved: %s", session.id)
+            raise BoothStorageError("Unable to save the completed photo.") from error
+        self._saved_output_path = saved_path
+        self._publish(BoothEventType.OUTPUT_SAVED, output_path=saved_path)
+        logger.info("Booth session output saved: %s", saved_path)
+        return saved_path
+
+    def _print_output(self, session: BoothSession, photo: Photo) -> PrintResult:
+        """Submit the final photo to the configured printer."""
+        try:
+            print_result = self._printer.print_photo(photo)
+        except PrintError as error:
+            logger.exception(
+                "Booth session output could not be printed: %s", session.id
+            )
+            self._publish(BoothEventType.PRINT_FAILED, message=str(error))
+            raise BoothPrintError("Unable to print the completed photo.") from error
+        self._publish(BoothEventType.PRINT_COMPLETED, print_result=print_result)
+        logger.info("Booth session output printed: %s", session.id)
+        return print_result
 
     def finish_session(self) -> None:
         """Clear a completed session and return to idle."""
         self._require_state(BoothState.COMPLETE)
         session = self._require_session()
         self._session = None
+        self._saved_output_path = None
         self._transition_to(BoothState.IDLE)
         logger.info("Booth session finished: %s", session.id)
 
@@ -224,6 +262,7 @@ class BoothController:
         """Discard the review selection and return to idle preview."""
         self._require_state(BoothState.REVIEW)
         self._session = None
+        self._saved_output_path = None
         self._transition_to(BoothState.IDLE)
         logger.info("Booth returned to preview for a retake")
 
@@ -266,6 +305,8 @@ class BoothController:
         previous_state: BoothState | None = None,
         countdown_value: int | None = None,
         photo: Photo | None = None,
+        output_path: Path | None = None,
+        print_result: PrintResult | None = None,
         message: str | None = None,
     ) -> None:
         """Notify listeners while isolating failures from booth workflow logic."""
@@ -276,6 +317,8 @@ class BoothController:
             previous_state=previous_state,
             countdown_value=countdown_value,
             photo=photo,
+            output_path=output_path,
+            print_result=print_result,
             message=message,
         )
         for listener in tuple(self._listeners):

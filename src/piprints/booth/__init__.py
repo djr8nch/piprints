@@ -3,6 +3,7 @@
 from piprints.booth.controller import (
     BoothCaptureError,
     BoothController,
+    BoothPrintError,
     BoothStateError,
     BoothStorageError,
 )
@@ -14,6 +15,7 @@ from piprints.booth.state import BoothState
 __all__ = [
     "BoothCaptureError",
     "BoothController",
+    "BoothPrintError",
     "BoothEvent",
     "BoothEventListener",
     "BoothEventType",

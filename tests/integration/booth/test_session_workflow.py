@@ -11,14 +11,16 @@ from piprints.booth import (
     BoothController,
     BoothEvent,
     BoothEventType,
+    BoothPrintError,
     BoothState,
     Countdown,
 )
 from piprints.imaging import PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import SinglePhotoLayout
 from piprints.imaging.operations import ResizeOperation
+from piprints.printing import Printer, PrintResult
 from piprints.storage import FilesystemPhotoStorage
-from tests.fakes import FakeCamera
+from tests.fakes import FakeCamera, FakePrinter
 
 
 class RecordingListener:
@@ -36,6 +38,7 @@ def make_controller(
     camera: FakeCamera,
     capture_directory: Path,
     listener: RecordingListener,
+    printer: Printer | None = None,
 ) -> BoothController:
     """Compose the real application collaborators around a fake camera."""
     return BoothController(
@@ -45,6 +48,7 @@ def make_controller(
         photo_pipeline=PhotoPipeline([ResizeOperation(4, 6)]),
         layout=SinglePhotoLayout(),
         photo_storage=FilesystemPhotoStorage(capture_directory.parent / "photos"),
+        printer=printer,
         countdown=Countdown(3, delay=lambda _: None),
         listeners=[listener],
     )
@@ -77,6 +81,13 @@ def test_single_photo_session_runs_from_idle_through_completion_and_reset(
 
     controller.complete_session()
     assert controller.state is BoothState.COMPLETE
+    output_saved_event = next(
+        event
+        for event in listener.events
+        if event.event_type is BoothEventType.OUTPUT_SAVED
+    )
+    assert output_saved_event.output_path is not None
+    assert output_saved_event.output_path.exists()
     controller.finish_session()
 
     assert controller.state is BoothState.IDLE
@@ -94,10 +105,85 @@ def test_single_photo_session_runs_from_idle_through_completion_and_reset(
         BoothEventType.STATE_CHANGED,
         BoothEventType.STATE_CHANGED,
         BoothEventType.REVIEW_READY,
+        BoothEventType.OUTPUT_SAVED,
         BoothEventType.STATE_CHANGED,
         BoothEventType.SESSION_COMPLETED,
         BoothEventType.STATE_CHANGED,
     ]
+
+
+def test_completed_session_saves_then_prints_the_final_photo(tmp_path: Path) -> None:
+    """A configured printer receives the final layout after digital saving."""
+    listener = RecordingListener()
+    printer = FakePrinter()
+    controller = make_controller(
+        FakeCamera(), tmp_path / "captures", listener, printer=printer
+    )
+
+    controller.start_countdown()
+    controller.run_countdown()
+    final_photo = controller.capture()
+    controller.complete_session()
+
+    assert final_photo is not None
+    assert controller.state is BoothState.COMPLETE
+    assert printer.print_requests == (final_photo,)
+    output_saved_event = next(
+        event
+        for event in listener.events
+        if event.event_type is BoothEventType.OUTPUT_SAVED
+    )
+    print_completed_event = next(
+        event
+        for event in listener.events
+        if event.event_type is BoothEventType.PRINT_COMPLETED
+    )
+    assert output_saved_event.output_path is not None
+    assert output_saved_event.output_path.exists()
+    assert print_completed_event.print_result == PrintResult(job_id="fake-print-1")
+
+
+def test_printer_failure_preserves_saved_output_and_review_state(
+    tmp_path: Path,
+) -> None:
+    """A failed print remains recoverable without recapturing the final image."""
+    listener = RecordingListener()
+    printer = FakePrinter(fail=True)
+    controller = make_controller(
+        FakeCamera(), tmp_path / "captures", listener, printer=printer
+    )
+
+    controller.start_countdown()
+    controller.run_countdown()
+    final_photo = controller.capture()
+
+    with pytest.raises(BoothPrintError) as error_info:
+        controller.complete_session()
+
+    output_saved_event = next(
+        event
+        for event in listener.events
+        if event.event_type is BoothEventType.OUTPUT_SAVED
+    )
+    print_failed_event = next(
+        event
+        for event in listener.events
+        if event.event_type is BoothEventType.PRINT_FAILED
+    )
+    assert error_info.value.__cause__ is not None
+    assert controller.state is BoothState.REVIEW
+    assert controller.last_capture is final_photo
+    assert output_saved_event.output_path is not None
+    assert output_saved_event.output_path.exists()
+    assert print_failed_event.message == "Fake printer is configured to fail."
+    assert printer.print_requests == ()
+
+    printer.fail = False
+    controller.complete_session()
+
+    assert controller.state is BoothState.COMPLETE
+    assert printer.print_requests == (final_photo,)
+    assert len(list((tmp_path / "photos").glob("*/*.png"))) == 1
 
 
 def test_camera_failure_enters_error_then_resets_cleanly(tmp_path: Path) -> None:

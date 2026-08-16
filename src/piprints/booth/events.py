@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, auto
+from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
 from piprints.booth.state import BoothState
 from piprints.imaging import Photo
+from piprints.printing import PrintResult
 
 
 class BoothEventType(Enum):
@@ -19,6 +21,9 @@ class BoothEventType(Enum):
     COUNTDOWN_TICK = auto()
     PHOTO_CAPTURED = auto()
     REVIEW_READY = auto()
+    OUTPUT_SAVED = auto()
+    PRINT_COMPLETED = auto()
+    PRINT_FAILED = auto()
     SESSION_COMPLETED = auto()
     ERROR = auto()
 
@@ -33,6 +38,8 @@ class BoothEvent:
     previous_state: BoothState | None = None
     countdown_value: int | None = None
     photo: Photo | None = None
+    output_path: Path | None = None
+    print_result: PrintResult | None = None
     message: str | None = None
 
 

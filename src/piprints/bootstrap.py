@@ -12,6 +12,7 @@ from piprints.booth import BoothController
 from piprints.camera import Camera, PiCamera
 from piprints.imaging import PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import FourPhotoLayout
+from piprints.printing import Printer
 from piprints.storage import FilesystemPhotoStorage, PhotoStorage
 from piprints.ui.screens.main_window import MainWindow
 
@@ -40,6 +41,7 @@ def create_booth(
     camera: Camera,
     capture_directory: Path | None = None,
     photo_storage: PhotoStorage | None = None,
+    printer: Printer | None = None,
 ) -> BoothController:
     """Create the booth workflow with its runtime capture location."""
     directory = capture_directory or Path.cwd() / "captures"
@@ -50,6 +52,7 @@ def create_booth(
         photo_pipeline=PhotoPipeline(),
         layout=FourPhotoLayout(),
         photo_storage=photo_storage or create_photo_storage(),
+        printer=printer,
     )
 
 

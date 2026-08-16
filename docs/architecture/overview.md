@@ -23,8 +23,9 @@ current lifecycle state. The controller also owns one active `BoothSession`,
 created with the selected layout's `required_photos`. It adds each processed
 capture, composes only after the session is complete, and coordinates imaging
 collaborators without decoding or transforming pixels. On session completion,
-it asks an injected `PhotoStorage` to persist the final photo; it never builds
-output paths itself.
+it asks an injected `PhotoStorage` to persist the final photo and, when
+configured, submits that same photo to an injected `Printer`; it never builds
+output paths or uses hardware-specific printer APIs itself.
 
 `BoothSession` is the booth-layer record for one interaction's identity,
 layout-derived capture requirement, and image artifacts. It holds ordered
@@ -62,6 +63,7 @@ flowchart TD
     BoothSession --> CapturedPhotos["Photo, Photo, ..."]
     Layout -->|final photo| BoothSession
     Booth -->|final photo + session ID| Storage
+    Booth -->|final photo, optional| Printer["Printer contract"]
     BoothSession -->|final photo| Window
     Window -->|preview frames| CameraContract
     CameraImpl --> CameraContract
@@ -72,13 +74,19 @@ flowchart TD
 
 `piprints.printing.Printer` is the hardware-independent contract for physical
 output. It receives a fully prepared final `Photo` and returns a `PrintResult`
-when that photo has been accepted for printing. Future printer adapters may
-raise `PrintError` when submission fails. The contract has no serial, raster,
-or printer-model details, and it does not choose layouts or transform pixels.
+when that photo has been accepted for printing. Printer adapters may raise
+`PrintError` when submission fails. The contract has no serial, raster, or
+printer-model details, and it does not choose layouts or transform pixels.
 
-No printer adapter or booth workflow integration exists yet. When printing is
-introduced, application orchestration will depend on `Printer`, while a
-hardware-specific adapter will implement that contract:
+At `complete_session()`, the controller saves the reviewed final photo first,
+then submits it to an optional `Printer`, and only then enters `COMPLETE`.
+Digital-only booths omit the printer dependency. A print failure leaves the
+session in `REVIEW`, retaining the saved output so it can be retried or
+retaken without recapturing. There is no `PRINTING` state because the current
+contract is synchronous and provides no user-visible progress phase.
+
+Application orchestration depends on `Printer`, while a hardware-specific
+adapter implements that contract:
 
 ```mermaid
 flowchart BT
@@ -218,7 +226,7 @@ behavior are documented in the [booth lifecycle](booth-lifecycle.md).
 
 | Package | Current responsibility |
 | --- | --- |
-| `booth` | Implemented: lifecycle transitions, session artifacts and progress, countdown progression, camera coordination, and final-session composition orchestration. |
+| `booth` | Implemented: lifecycle transitions, session artifacts and progress, countdown progression, camera coordination, final-session composition, and output orchestration through `PhotoStorage` and optional `Printer` contracts. |
 | `camera` | Implemented: `Camera` contract, `PreviewFrame`, domain errors, and Picamera2 adapter. |
 | `config` | Placeholder for future runtime configuration. |
 | `imaging` | Implemented: in-memory `Photo`, path loader, per-photo pipeline, deterministic framing and crop/resize operations, layout contracts, and single/grid/strip layouts. It is independent of UI, camera hardware, storage, and printing. |
@@ -245,7 +253,7 @@ Allowed:
 BoothController → Camera
 BoothController → BoothSession + PhotoLoader + PhotoPipeline + Layout
 BoothController → PhotoStorage
-Future booth/application orchestration → Printer
+BoothController → optional Printer
 CameraPreviewWidget → Camera / PreviewFrame
 bootstrap.py → PiCamera + BoothController + MainWindow
 ```
@@ -269,8 +277,8 @@ are excluded from standard CI.
 
 ## Future evolution
 
-Printing, persistent storage, themes, input hardware, sharing, and video are
-not implemented. Runtime framing targets and output
+Hardware-specific printing, themes, input hardware, sharing, and video are not
+implemented. Runtime framing targets and output
 dimensions will be introduced through configuration rather than hard-coded in
 the imaging pipeline. When those milestones begin, they should be added at the
 package boundaries above rather than folded into the current booth or UI
