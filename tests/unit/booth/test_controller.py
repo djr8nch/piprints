@@ -22,10 +22,15 @@ from piprints.booth import (
 from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import Layout, SinglePhotoLayout
 from piprints.storage import FilesystemPhotoStorage
-from tests.fakes import FakeCamera
+from tests.fakes import FakeCamera, FakePrinter
 
 
-def make_controller(camera: FakeCamera, capture_directory: Path) -> BoothController:
+def make_controller(
+    camera: FakeCamera,
+    capture_directory: Path,
+    *,
+    printer: FakePrinter | None = None,
+) -> BoothController:
     """Create the default single-photo workflow for controller tests."""
     return BoothController(
         camera=camera,
@@ -34,6 +39,7 @@ def make_controller(camera: FakeCamera, capture_directory: Path) -> BoothControl
         photo_pipeline=PhotoPipeline(),
         layout=SinglePhotoLayout(),
         photo_storage=FilesystemPhotoStorage(capture_directory.parent / "photos"),
+        printer=printer,
         countdown=Countdown(3, delay=lambda _: None),
     )
 
@@ -249,6 +255,27 @@ def test_completing_a_session_persists_its_final_photo(tmp_path: Path) -> None:
     assert final_photo is not None
     with Image.open(saved_paths[0]) as saved_image:
         assert saved_image.size == final_photo.image.size
+
+
+def test_print_request_uses_the_injected_printer_and_preserves_digital_output(
+    tmp_path: Path,
+) -> None:
+    """The review action sends its final photo through the configured dependency."""
+    printer = FakePrinter()
+    controller = make_controller(
+        FakeCamera(), tmp_path / "captures", printer=printer
+    )
+    controller.start_countdown()
+    controller.run_countdown()
+    final_photo = controller.capture()
+
+    result = controller.print_reviewed_output()
+
+    assert controller.printer_available
+    assert printer.print_requests == (final_photo,)
+    assert result.job_id == "fake-print-1"
+    assert controller.output_saved
+    assert controller.state is BoothState.REVIEW
 
 
 def test_capture_before_countdown_raises_state_error(tmp_path: Path) -> None:

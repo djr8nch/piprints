@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
@@ -33,6 +35,9 @@ from piprints.ui import QtEventBridge
 from piprints.ui.screens.main_window import MainWindow
 
 _PRIMUZ_MC206H_PRINTABLE_WIDTH_DOTS = 384
+_DEFAULT_PRIMUZ_USB_DEVICE_PATH = Path("/dev/usb/lp0")
+
+logger = logging.getLogger(__name__)
 
 
 def create_application(arguments: Sequence[str] | None = None) -> QApplication:
@@ -64,8 +69,40 @@ def create_primuz_usb_printer(device_path: str | Path) -> Printer:
     """
     return PrimuzThermalPrinter(
         UsbPrinterTransport(device_path),
-        ThermalRasterEncoder(max_width=_PRIMUZ_MC206H_PRINTABLE_WIDTH_DOTS),
+        ThermalRasterEncoder(
+            max_width=_PRIMUZ_MC206H_PRINTABLE_WIDTH_DOTS,
+            fit_to_max_width=True,
+        ),
     )
+
+
+def create_production_printer() -> Printer | None:
+    """Create the configured PRIMUZ printer, or retain digital-only operation.
+
+    The device path is temporary infrastructure composition for the validated
+    Raspberry Pi setup. A future Configuration milestone will supply it rather
+    than this bootstrap default.
+    """
+    if not _is_usable_printer_device(_DEFAULT_PRIMUZ_USB_DEVICE_PATH):
+        return None
+    return create_primuz_usb_printer(_DEFAULT_PRIMUZ_USB_DEVICE_PATH)
+
+
+def _is_usable_printer_device(device_path: Path) -> bool:
+    """Check whether this process can configure the known USB device path."""
+    if not device_path.is_char_device():
+        logger.info(
+            "PRIMUZ printer is not configured: USB device %s is unavailable.",
+            device_path,
+        )
+        return False
+    if not os.access(device_path, os.W_OK):
+        logger.warning(
+            "PRIMUZ printer is not configured: current user cannot write %s.",
+            device_path,
+        )
+        return False
+    return True
 
 
 def create_layout_catalog() -> LayoutCatalog:

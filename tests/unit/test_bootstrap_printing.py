@@ -3,12 +3,11 @@
 from pathlib import Path
 
 import pytest
-from PIL import Image
 
-from piprints.bootstrap import create_primuz_usb_printer
-from piprints.imaging import Photo
-from piprints.printing import PrintError
+import piprints.bootstrap as bootstrap
+from piprints.bootstrap import create_primuz_usb_printer, create_production_printer
 from piprints.printing.thermal import PrimuzThermalPrinter
+from tests.fakes import FakePrinter
 
 
 def test_primuz_usb_factory_creates_a_printer_without_opening_the_device() -> None:
@@ -18,9 +17,27 @@ def test_primuz_usb_factory_creates_a_printer_without_opening_the_device() -> No
     assert isinstance(printer, PrimuzThermalPrinter)
 
 
-def test_primuz_usb_factory_rejects_images_wider_than_validated_head() -> None:
-    """MC206H composition refuses raster data beyond the 384-dot print head."""
-    printer = create_primuz_usb_printer("/dev/usb/lp-test")
+def test_production_bootstrap_wires_the_validated_primuz_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hardware selection remains localized to the composition root."""
+    printer = FakePrinter()
+    factory_paths: list[Path] = []
+    monkeypatch.setattr(bootstrap, "_is_usable_printer_device", lambda _path: True)
+    monkeypatch.setattr(
+        bootstrap,
+        "create_primuz_usb_printer",
+        lambda path: factory_paths.append(Path(path)) or printer,
+    )
 
-    with pytest.raises(PrintError, match="Unable to prepare"):
-        printer.print_photo(Photo(Image.new("RGB", (385, 1), "black")))
+    assert create_production_printer() is printer
+    assert factory_paths == [Path("/dev/usb/lp0")]
+
+
+def test_production_bootstrap_keeps_digital_only_mode_when_device_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing printer device does not prevent normal application startup."""
+    monkeypatch.setattr(bootstrap, "_is_usable_printer_device", lambda _path: False)
+
+    assert create_production_printer() is None

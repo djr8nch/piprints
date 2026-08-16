@@ -275,6 +275,8 @@ def test_print_requests_the_application_api_only_once_per_touch_sequence() -> No
     assert controller.calls == ["print"]
     assert "PrimuzThermalPrinter" not in getsource(BoothScreen)
     assert "SerialTransport" not in getsource(BoothScreen)
+    assert "UsbPrinterTransport" not in getsource(BoothScreen)
+    assert "/dev/usb/lp0" not in getsource(BoothScreen)
     assert screen._print_button.minimumWidth() >= 136
     assert screen._print_button.minimumHeight() >= 72
 

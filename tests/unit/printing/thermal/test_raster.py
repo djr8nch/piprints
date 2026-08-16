@@ -102,6 +102,17 @@ def test_encoder_rejects_images_wider_than_its_configured_limit() -> None:
         encoder.encode(Photo(Image.new("RGB", (9, 1), "black")))
 
 
+def test_encoder_can_explicitly_fit_an_oversized_photo_to_its_maximum_width() -> None:
+    """Printer composition can request a proportional fit for a known print head."""
+    raster = ThermalRasterEncoder(max_width=8, fit_to_max_width=True).encode(
+        Photo(Image.new("RGB", (16, 4), "black"))
+    )
+
+    assert raster.width == 8
+    assert raster.height == 2
+    assert raster.data == b"\xff\xff"
+
+
 @pytest.mark.parametrize("max_width", [0, -1, 1.5, True])
 def test_encoder_rejects_invalid_maximum_width(max_width: object) -> None:
     """Configured dot limits must be positive integer values."""
@@ -114,3 +125,14 @@ def test_encoder_rejects_invalid_threshold(threshold: object) -> None:
     """Configured thresholds must fit a grayscale byte."""
     with pytest.raises(ValueError, match="integer from 0 to 255"):
         ThermalRasterEncoder(threshold=threshold)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("fit_to_max_width", [0, "yes", None])
+def test_encoder_rejects_non_boolean_fit_to_width_setting(
+    fit_to_max_width: object,
+) -> None:
+    """Fitting behavior must be an explicit configuration choice."""
+    with pytest.raises(ValueError, match="fit-to-width setting"):
+        ThermalRasterEncoder(
+            fit_to_max_width=fit_to_max_width  # type: ignore[arg-type]
+        )

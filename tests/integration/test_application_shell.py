@@ -14,6 +14,7 @@ from piprints.bootstrap import (
     create_main_window,
 )
 from tests.fakes import FakeCamera
+from tests.fakes.printer import FakePrinter
 
 
 def test_application_shell_can_be_created(tmp_path: Path) -> None:
@@ -28,3 +29,26 @@ def test_application_shell_can_be_created(tmp_path: Path) -> None:
     assert window.windowTitle() == "PiPrints"
 
     window.close()
+
+
+def test_application_composition_exposes_an_injected_printer_to_the_booth(
+    tmp_path: Path,
+) -> None:
+    """Review availability comes from the composition-root printer dependency."""
+    camera = FakeCamera()
+    event_bridge = create_event_bridge()
+    booth = create_booth(
+        camera,
+        tmp_path / "captures",
+        printer=FakePrinter(),
+        listeners=[event_bridge],
+    )
+
+    assert booth.printer_available
+
+
+def test_application_composition_supports_digital_only_mode(tmp_path: Path) -> None:
+    """No printer injection leaves the booth usable with printing unavailable."""
+    booth = create_booth(FakeCamera(), tmp_path / "captures")
+
+    assert not booth.printer_available

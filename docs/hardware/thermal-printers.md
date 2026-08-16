@@ -59,6 +59,28 @@ The optional `file_factory` is a test seam; production uses Python's built-in
 binary `open`. No `pyusb` or `libusb` dependency is needed because Linux
 already exposes the working device node.
 
+## Application bootstrap
+
+On the validated Raspberry Pi setup, normal application startup configures the
+PRIMUZ printer through `create_production_printer()` in the composition root.
+It checks the observed `/dev/usb/lp0` node for normal-user write access, then
+uses `create_primuz_usb_printer("/dev/usb/lp0")` and injects that same
+`Printer` instance into `BoothController`. The review UI receives availability
+only through `BoothController.printer_available`; it does not inspect USB
+devices or import printer implementations.
+
+The current booth layouts are wider than the 384-dot print head. The PRIMUZ
+factory therefore explicitly configures `ThermalRasterEncoder` to fit oversized
+final layouts proportionally to 384 dots before monochrome encoding. This
+printer-specific preparation preserves the digital saved layout while avoiding
+hardware clipping; its normal-session output requires the manual validation
+described below.
+
+If the node is absent or inaccessible, bootstrap injects no printer and the
+application starts in its existing digital-only mode. The temporary device path
+belongs to bootstrap infrastructure for this hardware validation increment. It
+should move to the Configuration milestone when runtime configuration exists.
+
 ## PRIMUZ raster protocol status
 
 `PrimuzThermalPrinter` receives a completed PiPrints `Photo`, encodes it with
@@ -146,7 +168,9 @@ The following remain outside the completed single-job raster validation:
 - repeated-job behavior and buffer limits;
 - USB disconnect/reconnect recovery;
 - paper-out handling; and
-- UI responsiveness during a print job.
+- UI responsiveness during a print job; and
+- a complete normal-booth session through the newly wired application startup,
+  including the proportional 1200-to-384-dot final-layout fit.
 
 Do not describe PRIMUZ image printing as physically validated merely because
 paper feeds. Record the expected versus observed appearance for all three

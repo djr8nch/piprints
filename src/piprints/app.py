@@ -10,6 +10,7 @@ from piprints.bootstrap import (
     create_camera,
     create_event_bridge,
     create_main_window,
+    create_production_printer,
 )
 
 
@@ -28,7 +29,11 @@ def main() -> int:
     application = create_application()
     camera = create_camera()
     event_bridge = create_event_bridge()
-    booth = create_booth(camera, listeners=[event_bridge])
+    booth = create_booth(
+        camera,
+        printer=create_production_printer(),
+        listeners=[event_bridge],
+    )
     try:
         camera.start()
     except Exception:
