@@ -7,6 +7,9 @@ captures/
 # C extensions
 *.so
 
+# Photos 
+photos/
+
 # Distribution / packaging
 .Python
 build/
