@@ -7,11 +7,11 @@ from datetime import datetime
 from pathlib import Path
 
 from piprints.booth.countdown import Countdown
+from piprints.booth.session import BoothSession
 from piprints.booth.state import BoothState
 from piprints.camera import Camera
 from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import Layout
-from piprints.session import CaptureSession
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,20 @@ class BoothStateError(RuntimeError):
 
 
 class BoothController:
-    """Coordinate camera captures, session progress, and final composition."""
+    """Coordinate booth lifecycle transitions, captures, and composition."""
+
+    _ALLOWED_TRANSITIONS: dict[BoothState, frozenset[BoothState]] = {
+        BoothState.IDLE: frozenset({BoothState.PREPARING}),
+        BoothState.PREPARING: frozenset({BoothState.COUNTDOWN, BoothState.IDLE}),
+        BoothState.COUNTDOWN: frozenset({BoothState.CAPTURING, BoothState.ERROR}),
+        BoothState.CAPTURING: frozenset(
+            {BoothState.PREPARING, BoothState.PROCESSING, BoothState.ERROR}
+        ),
+        BoothState.PROCESSING: frozenset({BoothState.REVIEW, BoothState.ERROR}),
+        BoothState.REVIEW: frozenset({BoothState.COMPLETE, BoothState.IDLE}),
+        BoothState.COMPLETE: frozenset({BoothState.IDLE}),
+        BoothState.ERROR: frozenset({BoothState.IDLE}),
+    }
 
     def __init__(
         self,
@@ -42,8 +55,7 @@ class BoothController:
         self._photo_pipeline = photo_pipeline
         self._layout = layout
         self._state = BoothState.IDLE
-        self._last_capture: Photo | None = None
-        self._session: CaptureSession | None = None
+        self._session: BoothSession | None = None
         self._countdown = Countdown(countdown_duration_seconds)
 
     @property
@@ -54,23 +66,48 @@ class BoothController:
     @property
     def last_capture(self) -> Photo | None:
         """Return the completed layout currently under review, if any."""
-        return self._last_capture
+        return self._session.final_photo if self._session is not None else None
 
     @property
-    def session(self) -> CaptureSession | None:
+    def session(self) -> BoothSession | None:
         """Return the active capture session, if one has been started."""
         return self._session
 
+    def begin_session(self) -> BoothSession:
+        """Create the active session and enter its preparation phase."""
+        self._require_state(BoothState.IDLE)
+        if self._session is not None:
+            raise BoothStateError("Cannot begin a session while one is active.")
+        self._session = BoothSession(self._layout.required_photos)
+        self._transition_to(BoothState.PREPARING)
+        logger.info("Booth session started: %s", self._session.id)
+        return self._session
+
+    def complete_session(self) -> None:
+        """Mark a reviewed session complete pending its final reset."""
+        self._require_state(BoothState.REVIEW)
+        self._transition_to(BoothState.COMPLETE)
+        logger.info("Booth session completed: %s", self._require_session().id)
+
+    def finish_session(self) -> None:
+        """Clear a completed session and return to idle."""
+        self._require_state(BoothState.COMPLETE)
+        session = self._require_session()
+        self._session = None
+        self._transition_to(BoothState.IDLE)
+        logger.info("Booth session finished: %s", session.id)
+
     def start_countdown(self) -> int:
         """Start countdown for the next session photo and return its display value."""
-        self._require_state(BoothState.IDLE)
-        if self._session is None:
-            self._session = CaptureSession(self._layout.required_photos)
-        self._state = BoothState.COUNTDOWN
+        if self._state is BoothState.IDLE:
+            self.begin_session()
+        self._require_state(BoothState.PREPARING)
+        session = self._require_session()
+        self._transition_to(BoothState.COUNTDOWN)
         logger.info(
             "Booth countdown started for photo %d of %d",
-            self._session.photo_count + 1,
-            self._session.target_photo_count,
+            session.photo_count + 1,
+            session.target_photo_count,
         )
         return self._countdown.start()
 
@@ -90,7 +127,7 @@ class BoothController:
         next countdown.
         """
         self._require_state(BoothState.COUNTDOWN)
-        self._state = BoothState.CAPTURING
+        self._transition_to(BoothState.CAPTURING)
         destination = self._next_capture_path()
 
         try:
@@ -98,15 +135,14 @@ class BoothController:
             captured_photo = self._photo_loader.load(captured_image)
             processed_photo = self._photo_pipeline.process(captured_photo)
             session = self._require_session()
-            session.add_photo(processed_photo)
+            session.add_captured_photo(processed_photo)
         except Exception as error:
-            self._state = BoothState.IDLE
-            self._session = None
+            self._abort_session()
             logger.exception("Booth capture failed")
             raise BoothCaptureError("Unable to capture a photo.") from error
 
         if not session.is_complete:
-            self._state = BoothState.IDLE
+            self._transition_to(BoothState.PREPARING)
             logger.info(
                 "Booth capture complete: %s (%d of %d)",
                 captured_image,
@@ -116,24 +152,23 @@ class BoothController:
             return None
 
         try:
-            final_photo = self._layout.compose(session.photos)
+            self._transition_to(BoothState.PROCESSING)
+            final_photo = self._layout.compose(session.captured_photos)
+            session.set_final_photo(final_photo)
         except Exception as error:
-            self._state = BoothState.IDLE
-            self._session = None
+            self._abort_session()
             logger.exception("Booth layout composition failed")
             raise BoothCaptureError("Unable to compose the captured photos.") from error
 
-        self._last_capture = final_photo
-        self._state = BoothState.REVIEW
+        self._transition_to(BoothState.REVIEW)
         logger.info("Booth session complete: %s", captured_image)
         return final_photo
 
     def retake(self) -> None:
         """Discard the review selection and return to idle preview."""
         self._require_state(BoothState.REVIEW)
-        self._last_capture = None
         self._session = None
-        self._state = BoothState.IDLE
+        self._transition_to(BoothState.IDLE)
         logger.info("Booth returned to preview for a retake")
 
     def _next_capture_path(self) -> Path:
@@ -149,7 +184,21 @@ class BoothController:
                 f"{self._state.name}."
             )
 
-    def _require_session(self) -> CaptureSession:
+    def _transition_to(self, next_state: BoothState) -> None:
+        """Move to an explicitly allowed lifecycle state."""
+        if next_state not in self._ALLOWED_TRANSITIONS[self._state]:
+            raise BoothStateError(
+                f"Cannot transition from {self._state.name} to {next_state.name}."
+            )
+        self._state = next_state
+
+    def _abort_session(self) -> None:
+        """Clear a failed session through the explicit error boundary."""
+        self._transition_to(BoothState.ERROR)
+        self._session = None
+        self._transition_to(BoothState.IDLE)
+
+    def _require_session(self) -> BoothSession:
         """Return the active session required while a capture is in progress."""
         if self._session is None:
             raise BoothStateError("Capture requires an active capture session.")

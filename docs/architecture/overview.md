@@ -16,21 +16,16 @@ the application and owns process-level camera cleanup. `bootstrap.py` is the
 composition root: it creates `PiCamera`, `PhotoPipeline`, `FourPhotoLayout`,
 `BoothController`, and `MainWindow`, then injects the dependencies they need.
 
-`BoothController` owns the workflow state and requests still captures through
-the `Camera` contract. A
-`CaptureSession` is the source of truth for ordered processed photos and their
-progress. The controller creates it from the selected layout's
-`required_photos`, adds each processed capture, and composes only after it is
-complete. It coordinates imaging collaborators without decoding or
-transforming pixels.
+`BoothController` owns lifecycle transitions; `BoothState` represents the
+current lifecycle state. The controller also owns one active `BoothSession`,
+created with the selected layout's `required_photos`. It adds each processed
+capture, composes only after the session is complete, and coordinates imaging
+collaborators without decoding or transforming pixels.
 
-`BoothSession` is the booth-layer record for one interaction's identity and
-image artifacts. It holds ordered captured `Photo` values and, once composed,
-one final `Photo`; it has no hardware, UI, layout, or persistence behavior.
-The current capture workflow continues to use `CaptureSession` for its
-layout-derived progress invariant. A later orchestration milestone can adopt
-`BoothSession` as the controller's active session record without coupling it to
-those collaborators.
+`BoothSession` is the booth-layer record for one interaction's identity,
+layout-derived capture requirement, and image artifacts. It holds ordered
+captured `Photo` values and, once composed, one final `Photo`; it has no
+hardware, UI, layout, or persistence behavior.
 `PiCamera` adapts Picamera2 and libcamera behind that contract. It configures
 continuous autofocus for Camera Module 3, supplies standard `PreviewFrame`
 values for live preview, and switches to a still configuration for capture.
@@ -55,14 +50,13 @@ flowchart TD
     Booth -->|still capture| CameraContract["Camera contract"]
     Booth -->|capture path| Loader["PhotoLoader"]
     Loader --> Photo["Photo"]
-    Booth --> Session["CaptureSession"]
-    Booth -. future active session record .-> BoothSession["BoothSession"]
+    Booth --> BoothSession["BoothSession"]
     Booth -->|one photo| Pipeline
-    Pipeline -->|processed photo| Session
-    Session -->|complete sequence| Layout
+    Pipeline -->|processed photo| BoothSession
+    BoothSession -->|complete sequence| Layout
     BoothSession --> CapturedPhotos["Photo, Photo, ..."]
-    BoothSession --> FinalPhoto["final Photo (optional)"]
-    Layout -->|final photo| Window
+    Layout -->|final photo| BoothSession
+    BoothSession -->|final photo| Window
     Window -->|preview frames| CameraContract
     CameraImpl --> CameraContract
     CameraImpl --> Driver["Picamera2 / libcamera"]
@@ -103,11 +97,11 @@ current path-based camera contract and the in-memory `Photo` model. It decodes
 and copies captures to RGB before processing. `Photo` itself only wraps the
 in-memory Pillow image; it has no capture-path or persistence responsibility.
 
-Every layout declares `required_photos`. `CaptureSession` receives that value
-from `BoothController`, so selecting a layout changes the session target
-without layout-specific workflow branches. The session exposes an immutable
-photo snapshot, count, remaining count, and completion state; it does not own
-camera access, timing, layout composition, or persistence.
+Every layout declares `required_photos`. `BoothController` passes that value to
+`BoothSession`, so selecting a layout changes the session target without
+layout-specific workflow branches. The session exposes an immutable photo
+snapshot, count, remaining count, and completion state; it does not own camera
+access, timing, layout composition, or persistence.
 
 The UI uses the final `Photo` from the selected layout for review and Qt's
 normal pixmap scaling for presentation. It does not calculate a separate
@@ -119,18 +113,22 @@ session completes.
 
 ```mermaid
 flowchart LR
-    Idle["Idle: live preview"] -->|Take Photo| Countdown["Countdown: 3, 2, 1"]
+    Idle["Idle: live preview"] -->|Begin session| Preparing["Preparing"]
+    Preparing -->|Take Photo| Countdown["Countdown: 3, 2, 1"]
     Countdown --> Capturing["Capturing: still image"]
-    Capturing -->|session incomplete| Idle
-    Capturing -->|session complete| Review["Review final layout"]
+    Capturing -->|session incomplete| Preparing
+    Capturing -->|session complete| Processing
+    Processing --> Review["Review final layout"]
     Review -->|Retake| Idle
+    Review -->|Complete session| Complete
+    Complete -->|Finish session| Idle
     Capturing -->|camera error| Idle
 ```
 
 `Countdown` is a timer-independent progression object. `BoothScreen` schedules
 its ticks with `QTimer`, keeping waits off the Qt UI thread; the controller
 decides that a countdown starts and the worker performs its resulting capture.
-The screen renders `Photo n of N` from `CaptureSession` instead of keeping a
+The screen renders `Photo n of N` from `BoothSession` instead of keeping a
 second progress counter.
 
 The preview worker stops before the still capture begins. Picamera2 restores
@@ -141,10 +139,7 @@ runtime `captures/` directory; this is not a storage or session subsystem.
 ## Booth lifecycle states
 
 `BoothState` is the booth layer's framework-independent lifecycle vocabulary.
-It is a small enum, not a class-per-state State pattern. The current controller
-uses the capture subset (`IDLE`, `COUNTDOWN`, `CAPTURING`, and `REVIEW`); the
-remaining states establish explicit boundaries for later orchestration without
-introducing that behavior now.
+It is a small enum, not a class-per-state State pattern.
 
 ```mermaid
 stateDiagram-v2
@@ -156,29 +151,29 @@ stateDiagram-v2
     PROCESSING --> REVIEW
     REVIEW --> COMPLETE
     COMPLETE --> IDLE
-    PREPARING --> ERROR
     COUNTDOWN --> ERROR
     CAPTURING --> ERROR
     PROCESSING --> ERROR
     ERROR --> IDLE
 ```
 
-The diagram is the intended session lifecycle model, not a claim that every
-transition is implemented. `PREPARING`, `PROCESSING`, `COMPLETE`, and `ERROR`
-will be activated by later workflow milestones. The enum has no dependency on
-Qt, hardware, imaging, printing, or persistence.
+`BoothController` owns the allowed lifecycle transitions, while `BoothState`
+represents the current lifecycle state. This increment implements session
+creation (`IDLE → PREPARING`), capture and processing transitions, review,
+completion/reset, and failure cleanup. Countdown timing and UI observation
+remain separate concerns. The enum has no dependency on Qt, hardware, imaging,
+printing, or persistence.
 
 ## Package responsibilities
 
 | Package | Current responsibility |
 | --- | --- |
-| `booth` | Implemented: countdown progression, capture state, camera coordination, and final-session composition orchestration. |
+| `booth` | Implemented: lifecycle transitions, session artifacts and progress, countdown progression, camera coordination, and final-session composition orchestration. |
 | `camera` | Implemented: `Camera` contract, `PreviewFrame`, domain errors, and Picamera2 adapter. |
 | `config` | Placeholder for future runtime configuration. |
 | `imaging` | Implemented: in-memory `Photo`, path loader, per-photo pipeline, deterministic framing and crop/resize operations, layout contracts, and single/grid/strip layouts. It is independent of UI, camera hardware, storage, and printing. |
 | `input` | Placeholder for future user and hardware input integration. |
 | `printing` | Placeholder for future printer abstractions and implementations. |
-| `session` | Implemented: hardware-independent `CaptureSession` domain model and progress invariants. |
 | `storage` | Placeholder for persistent captured-photo storage; not used by current runtime captures. |
 | `themes` | Placeholder for future UI theming. |
 | `ui` | Implemented: PySide6 preview, booth screen, and top-level window. |
@@ -198,7 +193,7 @@ Allowed:
 
 ```text
 BoothController → Camera
-BoothController → CaptureSession + PhotoLoader + PhotoPipeline + Layout
+BoothController → BoothSession + PhotoLoader + PhotoPipeline + Layout
 CameraPreviewWidget → Camera / PreviewFrame
 bootstrap.py → PiCamera + BoothController + MainWindow
 ```

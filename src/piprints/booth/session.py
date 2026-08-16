@@ -20,10 +20,19 @@ class BoothSession:
     a composed output is assigned.
     """
 
-    def __init__(self, session_id: UUID | None = None) -> None:
+    def __init__(
+        self, target_photo_count: int = 1, session_id: UUID | None = None
+    ) -> None:
+        if (
+            isinstance(target_photo_count, bool)
+            or not isinstance(target_photo_count, int)
+            or target_photo_count <= 0
+        ):
+            raise BoothSessionError("Target photo count must be a positive integer.")
         if session_id is not None and not isinstance(session_id, UUID):
             raise BoothSessionError("Session ID must be a UUID.")
         self._id = session_id or uuid4()
+        self._target_photo_count = target_photo_count
         self._captured_photos: list[Photo] = []
         self._final_photo: Photo | None = None
 
@@ -38,9 +47,24 @@ class BoothSession:
         return tuple(self._captured_photos)
 
     @property
+    def target_photo_count(self) -> int:
+        """Return the layout-derived number of captures required by this session."""
+        return self._target_photo_count
+
+    @property
     def photo_count(self) -> int:
         """Return the number of photos captured during this session."""
         return len(self._captured_photos)
+
+    @property
+    def remaining_photos(self) -> int:
+        """Return the number of captures still needed for the selected layout."""
+        return self._target_photo_count - self.photo_count
+
+    @property
+    def is_complete(self) -> bool:
+        """Return whether every required capture has been recorded."""
+        return self.photo_count == self._target_photo_count
 
     @property
     def final_photo(self) -> Photo | None:
@@ -55,15 +79,19 @@ class BoothSession:
             raise BoothSessionError(
                 "Cannot add captured photos after assigning the final photo."
             )
+        if self.is_complete:
+            raise BoothSessionError(
+                "Cannot add a photo to a complete booth session."
+            )
         self._captured_photos.append(photo)
 
     def set_final_photo(self, photo: Photo) -> None:
         """Assign the one composed output for this session."""
         if not isinstance(photo, Photo):
             raise BoothSessionError("Final photo must be a Photo instance.")
-        if not self._captured_photos:
+        if not self.is_complete:
             raise BoothSessionError(
-                "Cannot assign a final photo before capturing at least one photo."
+                "Cannot assign a final photo before all required photos are captured."
             )
         if self._final_photo is not None:
             raise BoothSessionError("A final photo has already been assigned.")

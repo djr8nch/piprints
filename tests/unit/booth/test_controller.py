@@ -9,6 +9,7 @@ import pytest
 from piprints.booth import (
     BoothCaptureError,
     BoothController,
+    BoothSession,
     BoothState,
     BoothStateError,
 )
@@ -34,6 +35,32 @@ def test_controller_starts_idle(tmp_path: Path) -> None:
 
     assert controller.state is BoothState.IDLE
     assert controller.last_capture is None
+    assert controller.session is None
+
+
+def test_begin_session_creates_the_active_session_and_prepares_the_booth(
+    tmp_path: Path,
+) -> None:
+    """Session creation is the only transition from idle into preparation."""
+    controller = make_controller(FakeCamera(), tmp_path / "captures")
+
+    session = controller.begin_session()
+
+    assert isinstance(session, BoothSession)
+    assert controller.session is session
+    assert session.target_photo_count == 1
+    assert controller.state is BoothState.PREPARING
+
+
+def test_cannot_begin_a_second_active_session(tmp_path: Path) -> None:
+    """Repeated start requests cannot replace in-flight session artifacts."""
+    controller = make_controller(FakeCamera(), tmp_path / "captures")
+    session = controller.begin_session()
+
+    with pytest.raises(BoothStateError, match="requires IDLE"):
+        controller.begin_session()
+
+    assert controller.session is session
 
 
 def test_successful_capture_transitions_to_review(tmp_path: Path) -> None:
@@ -51,6 +78,25 @@ def test_successful_capture_transitions_to_review(tmp_path: Path) -> None:
     assert captured_image.image.size == (2, 3)
     assert camera.capture_paths[0].parent == tmp_path / "captures"
     assert camera.capture_paths[0].suffix == ".jpg"
+
+
+def test_completed_session_can_be_finished_and_return_to_idle(tmp_path: Path) -> None:
+    """A reviewed result remains available until the lifecycle is finished."""
+    controller = make_controller(FakeCamera(), tmp_path / "captures")
+    controller.start_countdown()
+    controller.capture()
+
+    controller.complete_session()
+
+    assert controller.state is BoothState.COMPLETE
+    assert controller.session is not None
+    assert controller.last_capture is not None
+
+    controller.finish_session()
+
+    assert controller.state is BoothState.IDLE
+    assert controller.session is None
+    assert controller.last_capture is None
 
 
 def test_capture_before_countdown_raises_state_error(tmp_path: Path) -> None:
@@ -198,7 +244,7 @@ def test_controller_collects_a_multi_photo_session_before_review(
 
     controller.start_countdown()
     assert controller.capture() is None
-    assert controller.state is BoothState.IDLE
+    assert controller.state is BoothState.PREPARING
     assert controller.session is not None
     assert controller.session.photo_count == 1
     assert controller.session.remaining_photos == 1

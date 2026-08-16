@@ -30,14 +30,14 @@ def test_session_accepts_an_explicit_identifier() -> None:
     """Callers can construct deterministic sessions where identity matters."""
     session_id = UUID("12345678-1234-5678-1234-567812345678")
 
-    session = BoothSession(session_id)
+    session = BoothSession(session_id=session_id)
 
     assert session.id is session_id
 
 
 def test_session_preserves_capture_order_and_hides_its_collection() -> None:
     """One model supports both single- and multi-photo capture sequences."""
-    session = BoothSession()
+    session = BoothSession(target_photo_count=2)
     first_photo = make_photo("red")
     second_photo = make_photo("blue")
 
@@ -73,5 +73,5 @@ def test_session_rejects_a_final_photo_without_any_captures() -> None:
     """A final output cannot exist without source session artifacts."""
     session = BoothSession()
 
-    with pytest.raises(BoothSessionError, match="before capturing"):
+    with pytest.raises(BoothSessionError, match="all required photos"):
         session.set_final_photo(make_photo("red"))
