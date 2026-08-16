@@ -110,6 +110,12 @@ through a context manager. Its `SerialTransportSettings` requires an injected
 device path and baud rate, with an optional timeout (one second by default);
 it does not assume a particular `/dev` device or printer model.
 
+`PrimuzThermalPrinter` composes the raster encoder and serial transport behind
+the generic `Printer` contract. It is intentionally pre-hardware-validation:
+the sole raster framing command is an explicitly documented ESC/POS assumption,
+not a claim of verified PRIMUZ compatibility. No printer is created by default
+at bootstrap, so digital-only runtime startup remains independent of hardware.
+
 The UI depends directly on the PiPrints-owned camera contract only for preview
 frames. Workflow commands travel through `BoothController`; neither path gives
 the UI a Picamera2 or libcamera object. A focused UI presentation adapter turns
