@@ -7,17 +7,23 @@ from PySide6.QtWidgets import QMainWindow
 
 from piprints.booth import BoothController
 from piprints.camera import Camera
+from piprints.ui.event_bridge import QtEventBridge
 from piprints.ui.screens.booth import BoothScreen
 
 
 class MainWindow(QMainWindow):
     """Display the initial PiPrints booth capture workflow."""
 
-    def __init__(self, camera: Camera, booth: BoothController) -> None:
+    def __init__(
+        self,
+        camera: Camera,
+        booth: BoothController,
+        event_bridge: QtEventBridge,
+    ) -> None:
         super().__init__()
         self.setWindowTitle("PiPrints")
         self.resize(800, 480)
-        self._booth_screen = BoothScreen(camera, booth)
+        self._booth_screen = BoothScreen(camera, booth, event_bridge)
         self.setCentralWidget(self._booth_screen)
 
     def showEvent(self, event: QShowEvent) -> None:

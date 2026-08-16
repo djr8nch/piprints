@@ -14,6 +14,7 @@ from piprints.booth import BoothController, Countdown
 from piprints.imaging import Photo, PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import FourPhotoLayout
 from piprints.storage import FilesystemPhotoStorage
+from piprints.ui import QtEventBridge
 from piprints.ui.photo_presentation import photo_to_pixmap
 from piprints.ui.screens.booth import BoothScreen
 from tests.fakes import FakeCamera
@@ -36,7 +37,9 @@ def test_screen_progress_reads_the_controller_capture_session(tmp_path: Path) ->
     """Starting a session displays its first capture position without UI state."""
     application = QApplication.instance() or QApplication(["piprints"])
     controller = make_controller(tmp_path / "captures")
-    screen = BoothScreen(FakeCamera(), controller)
+    event_bridge = QtEventBridge()
+    controller.add_event_listener(event_bridge)
+    screen = BoothScreen(FakeCamera(), controller, event_bridge)
 
     screen._take_photo_button.click()
 

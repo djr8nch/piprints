@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -19,26 +19,15 @@ from PySide6.QtWidgets import (
 from piprints.booth import (
     BoothCaptureError,
     BoothController,
-    BoothEvent,
-    BoothEventType,
     BoothState,
 )
 from piprints.camera import Camera
 from piprints.imaging import Photo
+from piprints.ui.event_bridge import QtEventBridge
 from piprints.ui.photo_presentation import photo_to_pixmap
 from piprints.ui.widgets.camera_preview import CameraPreviewWidget
 
 logger = logging.getLogger(__name__)
-
-
-class _BoothEventBridge(QObject):
-    """Forward booth events into the Qt thread without changing their meaning."""
-
-    event_received = Signal(object)
-
-    def on_booth_event(self, event: BoothEvent) -> None:
-        """Emit an application event through a thread-safe Qt signal."""
-        self.event_received.emit(event)
 
 
 class _CaptureWorker(QThread):
@@ -81,17 +70,21 @@ class _CountdownWorker(QThread):
 class BoothScreen(QWidget):
     """Render session workflow state and forward intent to the controller."""
 
-    def __init__(self, camera: Camera, controller: BoothController) -> None:
+    def __init__(
+        self,
+        camera: Camera,
+        controller: BoothController,
+        event_bridge: QtEventBridge,
+    ) -> None:
         super().__init__()
         self._controller = controller
         self._capture_worker: _CaptureWorker | None = None
         self._countdown_worker: _CountdownWorker | None = None
         self._review_pixmap: QPixmap | None = None
         self._is_stopping = False
-        self._event_bridge = _BoothEventBridge(self)
-        self._event_bridge.event_received.connect(self._handle_booth_event)
-        self._controller.add_event_listener(self._event_bridge)
-        self._event_listener_registered = True
+        self._event_bridge = event_bridge
+        self._event_bridge.countdown_tick.connect(self._show_countdown_tick)
+        self._event_bridge.review_ready.connect(self._show_review)
 
         self._preview = CameraPreviewWidget(camera)
         self._countdown_label = QLabel()
@@ -138,17 +131,11 @@ class BoothScreen(QWidget):
     def start(self) -> None:
         """Start live preview when the window becomes visible."""
         self._is_stopping = False
-        if not self._event_listener_registered:
-            self._controller.add_event_listener(self._event_bridge)
-            self._event_listener_registered = True
         self._preview.start()
 
     def stop(self) -> None:
         """Stop timers and workers before the application releases the camera."""
         self._is_stopping = True
-        if self._event_listener_registered:
-            self._controller.remove_event_listener(self._event_bridge)
-            self._event_listener_registered = False
         self._preview.stop()
         if self._countdown_worker is not None and self._countdown_worker.isRunning():
             if not self._countdown_worker.wait(5000):
@@ -177,10 +164,9 @@ class BoothScreen(QWidget):
         self._countdown_worker.finished.connect(self._begin_capture)
         self._countdown_worker.start()
 
-    def _handle_booth_event(self, event: BoothEvent) -> None:
-        """Apply the small presentation behavior needed for current events."""
-        if event.event_type is BoothEventType.COUNTDOWN_TICK:
-            self._countdown_label.setText(str(event.countdown_value))
+    def _show_countdown_tick(self, value: int) -> None:
+        """Render a controller-owned countdown value delivered by Qt."""
+        self._countdown_label.setText(str(value))
 
     def _begin_capture(self) -> None:
         """Run the already-authorized capture outside the UI thread."""
@@ -208,14 +194,12 @@ class BoothScreen(QWidget):
             self._countdown_worker = None
 
     def _handle_capture_result(self, photo: Photo | None) -> None:
-        """Resume capture progress or show the completed session composition."""
+        """Resume preview after a non-final capture completes."""
         if photo is None:
             self._countdown_label.clear()
             self._take_photo_button.setEnabled(True)
             self._update_progress()
             self._preview.start()
-            return
-        self._show_review(photo)
 
     def _show_review(self, photo: Photo) -> None:
         """Present the final photo and transition the UI to review."""

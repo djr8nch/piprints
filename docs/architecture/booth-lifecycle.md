@@ -67,9 +67,9 @@ imaging collaborators own image work.
 
 ```mermaid
 flowchart LR
-    Controller["BoothController"] -->|"BoothEvent"| Listener["BoothEventListener"]
-    Listener --> Ui["Qt event bridge"]
-    Listener --> Diagnostics["Future diagnostics"]
+    Controller["BoothController"] -->|"BoothEvent"| Bridge["QtEventBridge"]
+    Bridge -->|"Qt Signal"| Ui["PySide6 UI"]
+    Controller -->|"BoothEvent"| Diagnostics["Future diagnostics listener"]
 ```
 
 The controller emits state-change events, session starts/completion, countdown
@@ -78,6 +78,16 @@ and errors. `OUTPUT_SAVED` includes the storage path; `PRINT_COMPLETED` includes
 the `PrintResult`; `PRINT_FAILED` includes a diagnostic message. Listeners are
 registered per controller, never globally. Listener exceptions are logged and
 ignored so observation cannot corrupt the workflow.
+
+`piprints.ui.QtEventBridge` is the presentation-layer Adapter between those
+framework-independent events and PySide6. Bootstrap creates one bridge,
+registers it with the controller, and injects that same bridge into the window.
+It currently exposes Qt signals for state transitions, countdown ticks,
+review-ready photos, and errors: the only lifecycle notifications needed by the
+present UI. It does not run booth commands, decide transitions, or perform
+camera, imaging, storage, or printing work. A booth event may originate on a
+worker thread; emitting its Qt signal queues widget slots to their receiver's
+thread, so widgets are never updated directly from the worker.
 
 ## Failure and reset
 

@@ -132,14 +132,20 @@ an optional presentation or diagnostics listener cannot corrupt the workflow.
 
 ```mermaid
 flowchart LR
-    Controller["BoothController"] -->|"BoothEvent"| Listener["BoothEventListener"]
-    Listener --> UiAdapter["Qt event bridge"]
-    Listener --> Diagnostics["Future diagnostics"]
+    Controller["BoothController"] -->|"BoothEvent"| Bridge["QtEventBridge"]
+    Bridge -->|"Qt Signal"| Ui["PySide6 UI"]
+    Controller -->|"BoothEvent"| Diagnostics["Future diagnostics listener"]
 ```
 
 This Observer boundary lets the UI render application occurrences without
-introducing a PySide6 dependency into booth logic. The Qt bridge only forwards
-events through a signal; it does not decide state transitions or timing.
+introducing a PySide6 dependency into booth logic. `QtEventBridge` is an
+Adapter in `piprints.ui`: bootstrap registers it with the controller and passes
+the same instance to the window. It translates the state-change, countdown,
+review-ready, and error events currently needed by the UI into Qt signals.
+Qt queues slots to the receiver's thread when worker-originated events are
+emitted, so the bridge never causes widget updates from a booth worker. It does
+not decide state transitions, timing, or any hardware, imaging, storage, or
+printing behavior.
 
 ## Imaging pipeline and layouts
 

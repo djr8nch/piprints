@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-from piprints.booth import BoothController
+from piprints.booth import BoothController, BoothEventListener
 from piprints.camera import Camera, PiCamera
 from piprints.imaging import PhotoLoader, PhotoPipeline
 from piprints.imaging.layouts import FourPhotoLayout
 from piprints.printing import Printer
 from piprints.storage import FilesystemPhotoStorage, PhotoStorage
+from piprints.ui import QtEventBridge
 from piprints.ui.screens.main_window import MainWindow
 
 
@@ -42,6 +43,7 @@ def create_booth(
     capture_directory: Path | None = None,
     photo_storage: PhotoStorage | None = None,
     printer: Printer | None = None,
+    listeners: Iterable[BoothEventListener] = (),
 ) -> BoothController:
     """Create the booth workflow with its runtime capture location."""
     directory = capture_directory or Path.cwd() / "captures"
@@ -53,13 +55,23 @@ def create_booth(
         layout=FourPhotoLayout(),
         photo_storage=photo_storage or create_photo_storage(),
         printer=printer,
+        listeners=listeners,
     )
 
 
-def create_main_window(camera: Camera, booth: BoothController) -> MainWindow:
+def create_event_bridge() -> QtEventBridge:
+    """Create the Qt adapter for booth events at the presentation boundary."""
+    return QtEventBridge()
+
+
+def create_main_window(
+    camera: Camera,
+    booth: BoothController,
+    event_bridge: QtEventBridge,
+) -> MainWindow:
     """Create the main window with its camera dependency.
 
     Camera construction remains in this composition root so UI code depends on
     the PiPrints camera contract rather than hardware implementations.
     """
-    return MainWindow(camera, booth)
+    return MainWindow(camera, booth, event_bridge)
